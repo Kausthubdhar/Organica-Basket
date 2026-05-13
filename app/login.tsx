@@ -1,20 +1,17 @@
-import {
-  FontAwesome5,
-  Ionicons,
-  MaterialCommunityIcons,
-} from "@expo/vector-icons";
+import { FontAwesome5, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Dimensions,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
   StatusBar as RNStatusBar,
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
@@ -27,343 +24,407 @@ import Animated, {
   FadeInDown,
   FadeInUp,
   FadeOut,
-  LinearTransition,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
 } from "react-native-reanimated";
+import { supabase } from "../lib/supabase";
 
 const { width, height } = Dimensions.get("window");
+const OTP_LENGTH = 6;
+const CARD_BORDER_RADIUS = 36;
 
 export default function LoginScreen() {
   const router = useRouter();
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [activeTab, setActiveTab] = useState("signin");
 
-  const handleClose = () => {
+  const [step, setStep] = useState<"email" | "otp">("email");
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const [isSending, setIsSending] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [resendTimer, setResendTimer] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+
+  const otpRefs = useRef<Array<TextInput | null>>([]);
+  const resendRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Animation values
+  const cardTranslateY = useSharedValue(60);
+  const cardOpacity = useSharedValue(0);
+  const heroScale = useSharedValue(1.08);
+  const stepOpacity = useSharedValue(1);
+
+  useEffect(() => {
+    // Entrance animation
+    cardTranslateY.value = withSpring(0, { damping: 22, stiffness: 100 });
+    cardOpacity.value = withTiming(1, { duration: 600 });
+    heroScale.value = withTiming(1, { duration: 1200 });
+    return () => { if (resendRef.current) clearInterval(resendRef.current); };
+  }, []);
+
+  const cardStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: cardTranslateY.value }],
+    opacity: cardOpacity.value,
+  }));
+
+  const heroStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: heroScale.value }],
+  }));
+
+  const startResendTimer = () => {
+    setResendTimer(30);
+    resendRef.current = setInterval(() => {
+      setResendTimer((prev) => {
+        if (prev <= 1) { clearInterval(resendRef.current!); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const isValidEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.trim());
+
+  const transitionStep = (nextStep: "email" | "otp") => {
+    stepOpacity.value = withTiming(0, { duration: 200 }, () => {
+      runOnJS(setStep)(nextStep);
+      stepOpacity.value = withTiming(1, { duration: 350 });
+    });
+  };
+
+  const handleSendOtp = async () => {
+    setError(null);
+    if (!isValidEmail(email)) {
+      setError("Please enter a valid email address.");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+
+    setIsSending(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    const { error: supaError } = await supabase.auth.signInWithOtp({
+      email: email.trim().toLowerCase(),
+      options: { shouldCreateUser: true },
+    });
+
+    setIsSending(false);
+
+    if (supaError) {
+      setError(supaError.message);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    transitionStep("otp");
+    startResendTimer();
+    setTimeout(() => otpRefs.current[0]?.focus(), 500);
+  };
+
+  const handleOtpChange = (value: string, index: number) => {
+    const newOtp = [...otp];
+    if (value.length > 1) {
+      const pasted = value.replace(/\D/g, "").slice(0, OTP_LENGTH);
+      const filled = Array(OTP_LENGTH).fill("");
+      for (let i = 0; i < pasted.length; i++) filled[i] = pasted[i];
+      setOtp(filled);
+      otpRefs.current[Math.min(pasted.length, OTP_LENGTH - 1)]?.focus();
+      return;
+    }
+    newOtp[index] = value.replace(/\D/g, "");
+    setOtp(newOtp);
+    if (value && index < OTP_LENGTH - 1) otpRefs.current[index + 1]?.focus();
+  };
+
+  const handleOtpKeyPress = (key: string, index: number) => {
+    if (key === "Backspace" && !otp[index] && index > 0) {
+      const newOtp = [...otp];
+      newOtp[index - 1] = "";
+      setOtp(newOtp);
+      otpRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleVerify = async () => {
+    const code = otp.join("");
+    if (code.length < OTP_LENGTH) { setError(`Enter all ${OTP_LENGTH} digits.`); return; }
+
+    setError(null);
+    setIsVerifying(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    const { data, error: supaError } = await supabase.auth.verifyOtp({
+      email: email.trim().toLowerCase(),
+      token: code,
+      type: "email",
+    });
+
+    setIsVerifying(false);
+
+    if (supaError) {
+      setError("Invalid or expired code. Try again.");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setOtp(["", "", "", "", "", ""]);
+      setTimeout(() => otpRefs.current[0]?.focus(), 100);
+      return;
+    }
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    if (data.user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("is_onboarded, role")
+        .eq("id", data.user.id)
+        .single();
+
+      if (!profile?.is_onboarded) {
+        router.replace("/onboarding-form");
+      } else if (profile.role === "owner") {
+        router.replace("/(owner)" as any);
+      } else {
+        router.replace("/(shopper)" as any);
+      }
+    }
+  };
+
+  const handleResend = async () => {
+    if (resendTimer > 0) return;
+    setOtp(["", "", "", "", "", ""]);
+    setError(null);
+    await handleSendOtp();
+  };
+
+  const handleBack = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.back();
+    transitionStep("email");
+    setOtp(["", "", "", "", "", ""]);
+    setError(null);
   };
 
-  const handleContinue = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    console.log("Continue with:", phoneNumber, fullName);
-  };
-
-  const handleGoogleLogin = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    console.log("Google Login pressed");
-  };
-
-  const toggleTab = (tab: string) => {
-    Haptics.selectionAsync();
-    setActiveTab(tab);
-  };
+  const stepStyle = useAnimatedStyle(() => ({ opacity: stepOpacity.value }));
+  const otpComplete = otp.join("").length === OTP_LENGTH;
 
   return (
     <View style={styles.container}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
 
-      <Image
-        source={require("../assets/images/farm_bg.png")}
-        style={styles.backgroundImage}
-        contentFit="cover"
-        blurRadius={50}
-      />
-      <View style={styles.backgroundOverlay} />
+      {/* ── Hero Image Section ── */}
+      <Animated.View style={[styles.heroWrapper, heroStyle]}>
+        <Image
+          source={require("../assets/images/farm_bg.png")}
+          style={styles.heroImage}
+          contentFit="cover"
+        />
+        <LinearGradient
+          colors={["transparent", "rgba(22,40,22,0.55)", "rgba(15,28,15,0.85)"]}
+          style={StyleSheet.absoluteFill}
+          locations={[0.3, 0.65, 1]}
+        />
 
-      <SafeAreaView style={styles.safeArea}>
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <KeyboardAvoidingView
-            style={styles.keyboardView}
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+        {/* Back button */}
+        <Animated.View entering={FadeIn.duration(800).delay(300)} style={[styles.backBtn, { top: Platform.OS === "android" ? (RNStatusBar.currentHeight ?? 0) + 16 : 56 }]}>
+          <TouchableOpacity
+            onPress={() => {
+              if (step === "otp") { transitionStep("email"); setOtp(["", "", "", "", "", ""]); setError(null); }
+              else { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.back(); }
+            }}
+            style={styles.backIconBtn}
           >
-            <Animated.View
-              entering={FadeInUp.duration(600)}
-              style={styles.header}
-            >
-              <TouchableOpacity
-                onPress={handleClose}
-                style={styles.closeButton}
-              >
-                <Ionicons name="close" size={28} color="#3E5C40" />
-              </TouchableOpacity>
-              <View style={styles.logoContainer}>
-                <FontAwesome5 name="seedling" size={20} color="#3E5C40" />
-                <Text style={styles.logoText}>Organica Bucket </Text>
-              </View>
-              <View style={{ width: 28 }} />
-            </Animated.View>
+            <Ionicons name={step === "otp" ? "arrow-back" : "close"} size={22} color="#fff" />
+          </TouchableOpacity>
+        </Animated.View>
 
-            <View style={styles.content}>
-              <Animated.View
-                entering={FadeInDown.duration(800).delay(200)}
-                layout={LinearTransition.springify().damping(22).stiffness(90)}
-                style={styles.card}
-              >
-                {activeTab === "signin" ? (
-                  <Animated.View
-                    key="signin-view"
-                    entering={FadeIn.duration(400)}
-                    exiting={FadeOut.duration(200)}
-                    style={styles.formContainer}
-                  >
-                    <Text style={styles.title}>Welcome back</Text>
-                    <Text style={styles.subtitle}>
-                      Join our organic movement from soil to soul.
-                    </Text>
-
-                    <View style={styles.inputSection}>
-                      <Text style={styles.inputLabel}>PHONE NUMBER</Text>
-                      <View style={styles.phoneInputContainer}>
-                        <TouchableOpacity
-                          style={styles.countryCodeSelector}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.flag}>🇮🇳</Text>
-                          <Text style={styles.countryCodeText}>+91</Text>
-                          <Ionicons
-                            name="chevron-down"
-                            size={14}
-                            color="#3E5C40"
-                            style={styles.chevron}
-                          />
-                        </TouchableOpacity>
-                        <TextInput
-                          style={styles.textInput}
-                          placeholder="Enter your number"
-                          placeholderTextColor="#9AA69A"
-                          keyboardType="phone-pad"
-                          value={phoneNumber}
-                          onChangeText={setPhoneNumber}
-                          maxLength={10}
-                        />
-                      </View>
-                    </View>
-
-                    <TouchableOpacity
-                      style={styles.primaryButton}
-                      activeOpacity={0.8}
-                      onPress={handleContinue}
-                    >
-                      <Text style={styles.primaryButtonText}>Continue</Text>
-                    </TouchableOpacity>
-
-                    <View style={styles.dividerContainer}>
-                      <View style={styles.dividerLine} />
-                      <Text style={styles.dividerText}>OR</Text>
-                      <View style={styles.dividerLine} />
-                    </View>
-
-                    <TouchableOpacity
-                      style={styles.googleButton}
-                      activeOpacity={0.8}
-                      onPress={handleGoogleLogin}
-                    >
-                      <Image
-                        source={{
-                          uri: "https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg",
-                        }}
-                        style={styles.googleIcon}
-                        contentFit="contain"
-                      />
-                      <Text style={styles.googleButtonText}>
-                        Continue with Google
-                      </Text>
-                    </TouchableOpacity>
-
-                    <View style={styles.signupContainer}>
-                      <Text style={styles.signupText}>
-                        Don't have an account?{" "}
-                      </Text>
-                      <TouchableOpacity onPress={() => toggleTab("join")}>
-                        <Text style={styles.signupLink}>Sign up</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </Animated.View>
-                ) : (
-                  <Animated.View
-                    key="join-view"
-                    entering={FadeIn.duration(400)}
-                    exiting={FadeOut.duration(200)}
-                    style={styles.formContainer}
-                  >
-                    <Text style={styles.title}>Start Your Journey</Text>
-                    <Text style={styles.subtitle}>
-                      Fresh, organic harvest delivered straight to your door.
-                    </Text>
-
-                    <View style={styles.inputSection}>
-                      <Text style={styles.inputLabel}>FULL NAME</Text>
-                      <View style={styles.fullNameInputContainer}>
-                        <Ionicons
-                          name="person-outline"
-                          size={18}
-                          color="#4A6038"
-                          style={styles.inputIcon}
-                        />
-                        <TextInput
-                          style={styles.fullNameTextInput}
-                          placeholder="Enter your full name"
-                          placeholderTextColor="#9AA69A"
-                          value={fullName}
-                          onChangeText={setFullName}
-                        />
-                      </View>
-                    </View>
-
-                    <View style={[styles.inputSection, { marginTop: 4 }]}>
-                      <Text style={styles.inputLabel}>PHONE NUMBER</Text>
-                      <View style={styles.phoneInputContainer}>
-                        <TouchableOpacity
-                          style={styles.countryCodeSelector}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.flag}>🇮🇳</Text>
-                          <Text style={styles.countryCodeText}>+91</Text>
-                          <Ionicons
-                            name="chevron-down"
-                            size={14}
-                            color="#3E5C40"
-                            style={styles.chevron}
-                          />
-                        </TouchableOpacity>
-                        <TextInput
-                          style={styles.textInput}
-                          placeholder="Enter your number"
-                          placeholderTextColor="#9AA69A"
-                          keyboardType="phone-pad"
-                          value={phoneNumber}
-                          onChangeText={setPhoneNumber}
-                          maxLength={10}
-                        />
-                      </View>
-                    </View>
-
-                    <TouchableOpacity
-                      style={styles.primaryButton}
-                      activeOpacity={0.8}
-                      onPress={handleContinue}
-                    >
-                      <Text style={styles.primaryButtonText}>
-                        Create Account
-                      </Text>
-                    </TouchableOpacity>
-
-                    <View style={styles.dividerContainer}>
-                      <View style={styles.dividerLine} />
-                      <Text style={styles.dividerText}>OR</Text>
-                      <View style={styles.dividerLine} />
-                    </View>
-
-                    <TouchableOpacity
-                      style={styles.googleButton}
-                      activeOpacity={0.8}
-                      onPress={handleGoogleLogin}
-                    >
-                      <Image
-                        source={{
-                          uri: "https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg",
-                        }}
-                        style={styles.googleIcon}
-                        contentFit="contain"
-                      />
-                      <Text style={styles.googleButtonText}>
-                        Sign up with Google
-                      </Text>
-                    </TouchableOpacity>
-
-                    <View style={styles.signupContainer}>
-                      <Text style={styles.signupText}>
-                        Already have an account?{" "}
-                      </Text>
-                      <TouchableOpacity onPress={() => toggleTab("signin")}>
-                        <Text style={styles.signupLink}>Sign in</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </Animated.View>
-                )}
-              </Animated.View>
-
-              <Animated.View
-                entering={FadeInDown.duration(800).delay(400)}
-                style={styles.badgesContainer}
-              >
-                <View style={styles.badge}>
-                  <MaterialCommunityIcons
-                    name="leaf-circle"
-                    size={16}
-                    color="#C98B4B"
-                  />
-                  <Text style={styles.badgeText}>100% ORGANIC</Text>
-                </View>
-                <View style={styles.badge}>
-                  <MaterialCommunityIcons
-                    name="truck-fast"
-                    size={16}
-                    color="#C98B4B"
-                  />
-                  <Text style={styles.badgeText}>FARM TO DOOR</Text>
-                </View>
-              </Animated.View>
+        {/* Branding on hero */}
+        <Animated.View entering={FadeInDown.duration(900).delay(200)} style={styles.heroBranding}>
+          <View style={styles.logoRow}>
+            <View style={styles.logoIconCircle}>
+              <FontAwesome5 name="seedling" size={18} color="#fff" />
             </View>
+            <Text style={styles.logoText}>Organica Bucket</Text>
+          </View>
+          <Text style={styles.heroTagline}>Soil to Soul.</Text>
+          <Text style={styles.heroSubTagline}>
+            Fresh organic harvest, delivered to your door.
+          </Text>
+        </Animated.View>
+      </Animated.View>
 
-            <Animated.View
-              entering={FadeInUp.duration(800).delay(600)}
-              style={styles.bottomNavContainer}
-            >
-              <View style={styles.bottomNav}>
-                <TouchableOpacity
-                  style={[
-                    styles.navItem,
-                    activeTab === "signin" && styles.navItemActive,
-                  ]}
-                  onPress={() => toggleTab("signin")}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name={activeTab === "signin" ? "log-in" : "log-in-outline"}
-                    size={24}
-                    color={activeTab === "signin" ? "#3E5C40" : "#8A998A"}
-                  />
-                  <Text
-                    style={[
-                      styles.navText,
-                      activeTab === "signin" && styles.navTextActive,
-                    ]}
-                  >
-                    SIGN IN
-                  </Text>
-                </TouchableOpacity>
+      {/* ── Bottom Sheet Card ── */}
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <KeyboardAvoidingView
+          style={styles.keyboardView}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <Animated.View style={[styles.card, cardStyle]}>
+            {/* Pull handle */}
+            <View style={styles.pullHandle} />
 
-                <TouchableOpacity
-                  style={[
-                    styles.navItem,
-                    activeTab === "join" && styles.navItemActive,
-                  ]}
-                  onPress={() => toggleTab("join")}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name={
-                      activeTab === "join" ? "person-add" : "person-add-outline"
-                    }
-                    size={24}
-                    color={activeTab === "join" ? "#3E5C40" : "#8A998A"}
-                  />
-                  <Text
-                    style={[
-                      styles.navText,
-                      activeTab === "join" && styles.navTextActive,
-                    ]}
-                  >
-                    JOIN
+            <Animated.View style={stepStyle}>
+              {step === "email" ? (
+                /* ── EMAIL STEP ── */
+                <View>
+                  <Text style={styles.cardTitle}>Continue with Email</Text>
+                  <Text style={styles.cardSubtitle}>
+                    New or returning — just enter your email.{"\n"}We'll send a quick verification code.
                   </Text>
-                </TouchableOpacity>
-              </View>
+
+                  {/* Email Input */}
+                  <View style={styles.inputWrapper}>
+                    <View style={styles.inputContainer}>
+                      <Ionicons name="mail-outline" size={20} color="#4A6038" style={styles.inputIcon} />
+                      <TextInput
+                        style={styles.textInput}
+                        placeholder="yourname@email.com"
+                        placeholderTextColor="#B0BDB0"
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        autoComplete="email"
+                        value={email}
+                        onChangeText={(t) => { setEmail(t); setError(null); }}
+                        onSubmitEditing={handleSendOtp}
+                        returnKeyType="send"
+                      />
+                      {isValidEmail(email) && (
+                        <Animated.View entering={FadeIn.duration(200)}>
+                          <Ionicons name="checkmark-circle" size={20} color="#4A6038" />
+                        </Animated.View>
+                      )}
+                    </View>
+                  </View>
+
+                  {/* Error */}
+                  {error && (
+                    <Animated.View entering={FadeIn.duration(300)} style={styles.errorBox}>
+                      <Ionicons name="alert-circle-outline" size={15} color="#C0392B" />
+                      <Text style={styles.errorText}>{error}</Text>
+                    </Animated.View>
+                  )}
+
+                  {/* CTA */}
+                  <TouchableOpacity
+                    style={[styles.primaryBtn, (!isValidEmail(email) || isSending) && styles.primaryBtnDisabled]}
+                    onPress={handleSendOtp}
+                    activeOpacity={0.85}
+                    disabled={!isValidEmail(email) || isSending}
+                  >
+                    {isSending ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <>
+                        <Text style={styles.primaryBtnText}>Send Verification Code</Text>
+                        <View style={styles.btnArrow}>
+                          <Ionicons name="arrow-forward" size={16} color="#4A6038" />
+                        </View>
+                      </>
+                    )}
+                  </TouchableOpacity>
+
+                  {/* Divider + Trust strip */}
+                  <View style={styles.trustRow}>
+                    <View style={styles.trustItem}>
+                      <Ionicons name="shield-checkmark-outline" size={13} color="#8A998A" />
+                      <Text style={styles.trustText}>No password</Text>
+                    </View>
+                    <View style={styles.trustDot} />
+                    <View style={styles.trustItem}>
+                      <Ionicons name="lock-closed-outline" size={13} color="#8A998A" />
+                      <Text style={styles.trustText}>100% Secure</Text>
+                    </View>
+                    <View style={styles.trustDot} />
+                    <View style={styles.trustItem}>
+                      <MaterialCommunityIcons name="leaf" size={13} color="#8A998A" />
+                      <Text style={styles.trustText}>Organica</Text>
+                    </View>
+                  </View>
+                </View>
+              ) : (
+                /* ── OTP STEP ── */
+                <View>
+                  {/* Email chip */}
+                  <View style={styles.emailChip}>
+                    <Ionicons name="mail" size={14} color="#4A6038" />
+                    <Text style={styles.emailChipText} numberOfLines={1}>
+                      {email.toLowerCase()}
+                    </Text>
+                  </View>
+
+                  <Text style={styles.cardTitle}>Enter the Code</Text>
+                  <Text style={styles.cardSubtitle}>
+                    We've sent a 6-digit code to your email.{"\n"}It expires in 10 minutes.
+                  </Text>
+
+                  {/* OTP Boxes */}
+                  <View style={styles.otpRow}>
+                    {otp.map((digit, i) => (
+                      <TextInput
+                        key={i}
+                        ref={(r) => { otpRefs.current[i] = r; }}
+                        style={[styles.otpBox, digit ? styles.otpBoxActive : null]}
+                        value={digit}
+                        onChangeText={(v) => handleOtpChange(v, i)}
+                        onKeyPress={({ nativeEvent }) => handleOtpKeyPress(nativeEvent.key, i)}
+                        keyboardType="number-pad"
+                        maxLength={6}
+                        textAlign="center"
+                        selectTextOnFocus
+                        caretHidden
+                      />
+                    ))}
+                  </View>
+
+                  {/* Error */}
+                  {error && (
+                    <Animated.View entering={FadeIn.duration(300)} style={styles.errorBox}>
+                      <Ionicons name="alert-circle-outline" size={15} color="#C0392B" />
+                      <Text style={styles.errorText}>{error}</Text>
+                    </Animated.View>
+                  )}
+
+                  {/* Verify CTA */}
+                  <TouchableOpacity
+                    style={[styles.primaryBtn, (!otpComplete || isVerifying) && styles.primaryBtnDisabled]}
+                    onPress={handleVerify}
+                    activeOpacity={0.85}
+                    disabled={!otpComplete || isVerifying}
+                  >
+                    {isVerifying ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <>
+                        <Text style={styles.primaryBtnText}>Verify & Continue</Text>
+                        <View style={styles.btnArrow}>
+                          <Ionicons name="checkmark" size={16} color="#4A6038" />
+                        </View>
+                      </>
+                    )}
+                  </TouchableOpacity>
+
+                  {/* Resend */}
+                  <TouchableOpacity
+                    onPress={handleResend}
+                    disabled={resendTimer > 0}
+                    style={styles.resendRow}
+                  >
+                    <Text style={styles.resendText}>
+                      Didn't get it?{"  "}
+                      {resendTimer > 0 ? (
+                        <Text style={styles.resendTimerText}>
+                          Resend in {resendTimer}s
+                        </Text>
+                      ) : (
+                        <Text style={styles.resendLink}>Resend Code</Text>
+                      )}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </Animated.View>
-          </KeyboardAvoidingView>
-        </TouchableWithoutFeedback>
-      </SafeAreaView>
+          </Animated.View>
+        </KeyboardAvoidingView>
+      </TouchableWithoutFeedback>
     </View>
   );
 }
@@ -371,272 +432,285 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F5F6E9",
+    backgroundColor: "#0F1C0F",
   },
-  backgroundImage: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.3,
+
+  // ── Hero ──
+  heroWrapper: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: height * 0.58,
+    overflow: "hidden",
   },
-  backgroundOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(245, 246, 233, 0.8)",
+  heroImage: {
+    width: "100%",
+    height: "100%",
   },
-  safeArea: {
-    flex: 1,
-    paddingTop: Platform.OS === "android" ? RNStatusBar.currentHeight : 0,
+  backBtn: {
+    position: "absolute",
+    left: 20,
   },
-  keyboardView: {
-    flex: 1,
-    justifyContent: "space-between",
+  backIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
   },
-  header: {
+  heroBranding: {
+    position: "absolute",
+    bottom: 32,
+    left: 28,
+  },
+  logoRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 8,
+    gap: 10,
+    marginBottom: 14,
   },
-  closeButton: {
-    padding: 4,
-  },
-  logoContainer: {
-    flexDirection: "row",
+  logoIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    justifyContent: "center",
     alignItems: "center",
-    gap: 6,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.3)",
   },
   logoText: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#3E5C40",
-    fontStyle: "italic",
-    letterSpacing: -0.5,
+    fontSize: 17,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.9)",
+    letterSpacing: 0.3,
   },
-  content: {
+  heroTagline: {
+    fontSize: 42,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: -1,
+    lineHeight: 46,
+    marginBottom: 8,
+  },
+  heroSubTagline: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.72)",
+    fontWeight: "400",
+    lineHeight: 20,
+  },
+
+  // ── Card ──
+  keyboardView: {
     flex: 1,
-    justifyContent: "center",
-    paddingHorizontal: 20,
+    justifyContent: "flex-end",
   },
   card: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 24,
-    padding: 32,
+    borderTopLeftRadius: CARD_BORDER_RADIUS,
+    borderTopRightRadius: CARD_BORDER_RADIUS,
+    paddingHorizontal: 28,
+    paddingBottom: Platform.OS === "ios" ? 40 : 32,
+    paddingTop: 20,
+    minHeight: height * 0.5,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.06,
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.12,
     shadowRadius: 24,
-    elevation: 8,
-    alignItems: "center",
-    overflow: "hidden", // needed for Layout.springify
+    elevation: 20,
   },
-  formContainer: {
-    width: "100%",
-    alignItems: "center",
+  pullHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#E0E8D8",
+    alignSelf: "center",
+    marginBottom: 24,
   },
-  title: {
-    fontFamily: Platform.OS === "ios" ? "Georgia" : "serif",
-    fontSize: 32,
-    fontWeight: "bold",
-    color: "#1E261E",
-    marginBottom: 12,
-    textAlign: "center",
-  },
-  subtitle: {
-    fontSize: 15,
-    color: "#6B7A6B",
-    textAlign: "center",
-    marginBottom: 32,
-    lineHeight: 22,
-    paddingHorizontal: 10,
-  },
-  inputSection: {
-    width: "100%",
-    marginBottom: 20,
-  },
-  inputLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#4A6038",
-    letterSpacing: 1.2,
-    marginBottom: 10,
-    marginLeft: 4,
-  },
-  phoneInputContainer: {
+
+  // Email chip (shown on OTP step)
+  emailChip: {
     flexDirection: "row",
-    gap: 12,
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#F0F4EC",
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    alignSelf: "flex-start",
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "rgba(74,96,56,0.15)",
   },
-  countryCodeSelector: {
+  emailChipText: {
+    fontSize: 13,
+    color: "#4A6038",
+    fontWeight: "600",
+    maxWidth: width - 120,
+  },
+
+  cardTitle: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: "#1E261E",
+    letterSpacing: -0.5,
+    marginBottom: 10,
+  },
+  cardSubtitle: {
+    fontSize: 14,
+    color: "#6B7A6B",
+    lineHeight: 22,
+    marginBottom: 28,
+  },
+
+  // Input
+  inputWrapper: {
+    marginBottom: 14,
+  },
+  inputContainer: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#F4F5E6",
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    borderRadius: 14,
-    gap: 6,
+    borderRadius: 18,
+    paddingHorizontal: 18,
+    height: 58,
+    borderWidth: 1.5,
+    borderColor: "rgba(74,96,56,0.12)",
   },
-  flag: {
-    fontSize: 16,
-  },
-  countryCodeText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#1E261E",
-  },
-  chevron: {
-    marginLeft: 2,
+  inputIcon: {
+    marginRight: 12,
   },
   textInput: {
     flex: 1,
-    backgroundColor: "#F4F5E6",
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 0,
-    height: 50,
-    fontSize: 14,
-    fontWeight: "500",
+    fontSize: 15,
     color: "#1E261E",
+    fontWeight: "500",
   },
-  fullNameInputContainer: {
+
+  // Error
+  errorBox: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F4F5E6",
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    height: 50,
+    gap: 8,
+    backgroundColor: "rgba(192,57,43,0.07)",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "rgba(192,57,43,0.18)",
   },
-  inputIcon: {
-    marginRight: 10,
-  },
-  fullNameTextInput: {
+  errorText: {
     flex: 1,
-    paddingVertical: 0,
-    fontSize: 14,
+    fontSize: 13,
+    color: "#C0392B",
     fontWeight: "500",
-    color: "#1E261E",
   },
-  primaryButton: {
-    backgroundColor: "#4A6038",
-    width: "100%",
-    paddingVertical: 18,
-    borderRadius: 16,
+
+  // Primary Button
+  primaryBtn: {
+    backgroundColor: "#2D4A2D",
+    borderRadius: 20,
+    height: 60,
+    flexDirection: "row",
     alignItems: "center",
-    marginBottom: 24,
-    marginTop: 4,
-    shadowColor: "#4A6038",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 4,
+    justifyContent: "center",
+    gap: 12,
+    marginBottom: 20,
+    shadowColor: "#2D4A2D",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 8,
   },
-  primaryButtonText: {
+  primaryBtnDisabled: {
+    backgroundColor: "#B8C4B0",
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  primaryBtnText: {
     color: "#FFFFFF",
     fontSize: 16,
-    fontWeight: "bold",
-    letterSpacing: 0.5,
+    fontWeight: "700",
+    letterSpacing: 0.2,
   },
-  dividerContainer: {
-    flexDirection: "row",
+  btnArrow: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "rgba(255,255,255,0.25)",
+    justifyContent: "center",
     alignItems: "center",
-    width: "100%",
-    marginBottom: 24,
   },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "#E2E5D8",
-  },
-  dividerText: {
-    color: "#8A998A",
-    paddingHorizontal: 16,
-    fontSize: 12,
-    fontWeight: "600",
-    letterSpacing: 1,
-  },
-  googleButton: {
+
+  // Trust row
+  trustRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F4F5E6",
-    width: "100%",
-    paddingVertical: 16,
-    borderRadius: 16,
-    marginBottom: 24,
+    gap: 10,
   },
-  googleIcon: {
-    width: 20,
-    height: 20,
-    marginRight: 12,
-  },
-  googleButtonText: {
-    color: "#3E5C40",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  signupContainer: {
+  trustItem: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 4,
   },
-  signupText: {
-    color: "#6B7A6B",
-    fontSize: 14,
-  },
-  signupLink: {
-    color: "#4A6038",
-    fontSize: 14,
-    fontWeight: "bold",
-  },
-  badgesContainer: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 24,
-    marginTop: 24,
-  },
-  badge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  badgeText: {
-    color: "#6B7A6B",
+  trustText: {
     fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 1,
-  },
-  bottomNavContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: Platform.OS === "ios" ? 10 : 24,
-  },
-  bottomNav: {
-    flexDirection: "row",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 30,
-    padding: 6,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.05,
-    shadowRadius: 16,
-    elevation: 4,
-  },
-  navItem: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 12,
-    borderRadius: 24,
-    gap: 8,
-  },
-  navItemActive: {
-    backgroundColor: "#F4F5E6",
-  },
-  navText: {
-    fontSize: 12,
-    fontWeight: "700",
     color: "#8A998A",
-    letterSpacing: 1,
+    fontWeight: "600",
   },
-  navTextActive: {
-    color: "#3E5C40",
+  trustDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: "#C8D4C0",
+  },
+
+  // OTP
+  otpRow: {
+    flexDirection: "row",
+    gap: 10,
+    justifyContent: "center",
+    marginBottom: 20,
+  },
+  otpBox: {
+    flex: 1,
+    height: 58,
+    maxWidth: 50,
+    borderRadius: 16,
+    backgroundColor: "#F4F5E6",
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#1E261E",
+    borderWidth: 2,
+    borderColor: "transparent",
+    textAlign: "center",
+  },
+  otpBoxActive: {
+    borderColor: "#4A6038",
+    backgroundColor: "#F0F6EC",
+  },
+
+  // Resend
+  resendRow: {
+    alignItems: "center",
+  },
+  resendText: {
+    fontSize: 13,
+    color: "#6B7A6B",
+    textAlign: "center",
+  },
+  resendLink: {
+    color: "#4A6038",
+    fontWeight: "700",
+  },
+  resendTimerText: {
+    color: "#A8B8A0",
+    fontWeight: "600",
   },
 });
