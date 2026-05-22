@@ -1,15 +1,14 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { Tabs } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { Platform, View, StyleSheet, DeviceEventEmitter } from "react-native";
+import { Platform, StyleSheet, DeviceEventEmitter, TouchableOpacity, Text } from "react-native";
 import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import Animated, { 
   useAnimatedStyle, 
   useSharedValue, 
   withSpring,
-  interpolate,
-  Extrapolate
+  FadeIn
 } from "react-native-reanimated";
 
 export default function TabLayout() {
@@ -31,7 +30,7 @@ export default function TabLayout() {
     });
 
     return () => subscription.remove();
-  }, []);
+  }, [opacity, translateY]);
 
   const animatedStyle = useAnimatedStyle(() => {
     return {
@@ -130,9 +129,6 @@ export default function TabLayout() {
   );
 }
 
-// Additional imports for the custom component
-import { TouchableOpacity, Text } from "react-native";
-import { FadeIn } from "react-native-reanimated";
 
 const styles = StyleSheet.create({
   customTabBarContainer: {

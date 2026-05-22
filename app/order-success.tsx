@@ -1,24 +1,18 @@
 import React, { useEffect } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Platform } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { 
   FadeInDown, 
-  FadeInUp, 
-  ZoomIn, 
+  FadeInUp,
   useAnimatedStyle, 
-  useSharedValue, 
-  withRepeat, 
+  useSharedValue,
   withTiming, 
   withSequence,
   withDelay
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
-import { BlurView } from "expo-blur";
-import { Image } from "expo-image";
-
-const { width } = Dimensions.get("window");
 
 export default function OrderSuccessScreen() {
   const router = useRouter();
@@ -32,7 +26,7 @@ export default function OrderSuccessScreen() {
       withTiming(1, { duration: 200 })
     ));
     opacity.value = withTiming(1, { duration: 600 });
-  }, []);
+  }, [opacity, scale]);
 
   const checkStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],

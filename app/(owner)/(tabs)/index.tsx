@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform, Modal } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform, Modal, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons, FontAwesome5, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
 import { supabase } from "../../../lib/supabase";
 import * as Haptics from "expo-haptics";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useFocusEffect } from "expo-router";
 
 export default function OwnerDashboard() {
-  const router = useRouter();
   const [store, setStore] = useState<any>(null);
   const [stats, setStats] = useState({ products: 0, orders: 0, revenue: 0 });
   const [pendingOrders, setPendingOrders] = useState<any[]>([]);
@@ -48,6 +47,7 @@ export default function OwnerDashboard() {
         setPendingOrders(orderData.data || []);
       }
     } catch (err) {
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -261,7 +261,12 @@ export default function OwnerDashboard() {
                   style={styles.callButton}
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    // Linking logic here
+                    const phone = getCustomerProfile(selectedOrder)?.phone_number;
+                    if (phone) {
+                      Linking.openURL(`tel:${phone}`);
+                    } else {
+                      alert("No phone number provided");
+                    }
                   }}
                 >
                   <Ionicons name="call" size={20} color="#fff" />
@@ -385,8 +390,6 @@ const styles = StyleSheet.create({
   detailsBtnText: { color: "#4A6038", fontSize: 13, fontWeight: "800" },
   packBtn: { flex: 1.5, backgroundColor: "#4A6038", paddingVertical: 12, borderRadius: 14, alignItems: "center", justifyContent: "center" },
   packBtnText: { color: "#fff", fontSize: 13, fontWeight: "800" },
-  detailsBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14, backgroundColor: "#F4F5E6" },
-  detailsBtnText: { color: "#4A6038", fontSize: 13, fontWeight: "700" },
   tipCard: { flexDirection: "row", backgroundColor: "#2D382D", padding: 20, borderRadius: 24, alignItems: "center" },
   tipTitle: { color: "#fff", fontSize: 16, fontWeight: "700", marginBottom: 4 },
   tipDesc: { color: "rgba(255,255,255,0.6)", fontSize: 13, lineHeight: 18 },

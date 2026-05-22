@@ -5,17 +5,16 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  KeyboardAvoidingView,
   Platform,
   ScrollView,
   ActivityIndicator,
   Modal,
+  Linking,
 } from "react-native";
 import { showModernAlert } from "../../components/ModernAlert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Location from "expo-location";
-import { BlurView } from "expo-blur";
-import { Ionicons, FontAwesome5, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
@@ -506,7 +505,11 @@ export default function ProfileScreen() {
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     const owner = getOwnerProfile(selectedOrder);
-                    showModernAlert({ title: "Connecting...", message: `Calling ${owner?.full_name || 'Owner'}`, type: "info" });
+                    if (owner?.phone_number) {
+                      Linking.openURL(`tel:${owner.phone_number}`);
+                    } else {
+                      showModernAlert({ title: "Unavailable", message: "No phone number provided", type: "error" });
+                    }
                   }}
                 >
                   <Ionicons name="call" size={20} color="#fff" />

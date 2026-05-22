@@ -2,10 +2,10 @@ import React, { useState, useEffect } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TextInput,
   TouchableOpacity, KeyboardAvoidingView, Platform,
-  ActivityIndicator, useWindowDimensions, Modal
+  ActivityIndicator, Modal
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeInDown, FadeInUp, ZoomIn } from "react-native-reanimated";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
@@ -16,7 +16,6 @@ import * as FileSystem from "expo-file-system/legacy";
 import { decode } from "base64-arraybuffer";
 
 const SOFT_GREEN = "#4A6038";
-const ACTIVE_ORANGE = "#FF8C42";
 const BG = "#F5F6E9";
 
 const CATEGORIES = [
@@ -33,7 +32,6 @@ const UNITS = ["kg", "gram", "litre", "piece", "dozen", "bundle"];
 export default function AddProductScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams(); // Check if we are in Edit Mode
-  const { width } = useWindowDimensions();
   
   const isEditMode = !!id;
 
@@ -59,12 +57,7 @@ export default function AddProductScreen() {
     onDone: () => {}
   });
 
-  useEffect(() => {
-    fetchStore();
-    if (isEditMode) fetchProductDetails();
-  }, []);
-
-  const fetchProductDetails = async () => {
+  const fetchProductDetails = React.useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase.from("products").select("*").eq("id", id).single();
     if (data && !error) {
@@ -77,7 +70,12 @@ export default function AddProductScreen() {
       setImageUri(data.image_url);
     }
     setLoading(false);
-  };
+  }, [id]);
+
+  useEffect(() => {
+    fetchStore();
+    if (isEditMode) fetchProductDetails();
+  }, [isEditMode, fetchProductDetails]);
 
   const fetchStore = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -145,7 +143,7 @@ export default function AddProductScreen() {
       const { data: { publicUrl } } = supabase.storage.from("products").getPublicUrl(data.path);
       return publicUrl;
     } catch (err) {
-
+      console.error(err);
       return null;
     }
   };
@@ -230,11 +228,6 @@ export default function AddProductScreen() {
     }
   };
 
-  const resetForm = () => {
-    setName(""); setDescription(""); setPrice("");
-    setUnit("kg"); setCategory("Veggies");
-    setImageUri(null); setIsAvailable(true);
-  };
 
   return (
     <SafeAreaView style={styles.container}>

@@ -215,6 +215,75 @@ const OnboardingItem = ({ item, index, scrollX }: any) => {
   );
 };
 
+const CinematicTextItem = ({ item, index, scrollX }: any) => {
+  const animatedTextStyle = useAnimatedStyle(() => {
+    const inputRange = [
+      (index - 1) * ITEM_WIDTH,
+      index * ITEM_WIDTH,
+      (index + 1) * ITEM_WIDTH,
+    ];
+
+    const opacity = interpolate(
+      scrollX.value,
+      inputRange,
+      [0, 1, 0],
+      Extrapolation.CLAMP,
+    );
+    const translateY = interpolate(
+      scrollX.value,
+      inputRange,
+      [15, 0, -15],
+      Extrapolation.CLAMP,
+    );
+
+    return {
+      opacity,
+      transform: [{ translateY }],
+      position: "absolute",
+      width: "100%",
+    };
+  });
+
+  return (
+    <Animated.View style={animatedTextStyle}>
+      <Text style={styles.cinematicText}>{item.cinematicTitle}</Text>
+    </Animated.View>
+  );
+};
+
+const PaginationDot = ({ index, scrollX }: any) => {
+  const dotAnimatedStyle = useAnimatedStyle(() => {
+    const inputRange = [
+      (index - 1) * ITEM_WIDTH,
+      index * ITEM_WIDTH,
+      (index + 1) * ITEM_WIDTH,
+    ];
+
+    const dotWidth = interpolate(
+      scrollX.value,
+      inputRange,
+      [8, 24, 8],
+      Extrapolation.CLAMP,
+    );
+    const backgroundColor = interpolateColor(
+      scrollX.value,
+      inputRange,
+      [
+        "rgba(92, 124, 84, 0.3)",
+        "#5C7C54",
+        "rgba(92, 124, 84, 0.3)",
+      ],
+    );
+
+    return {
+      width: dotWidth,
+      backgroundColor,
+    };
+  });
+
+  return <Animated.View style={[styles.dot, dotAnimatedStyle]} />;
+};
+
 export default function OnboardingScreen() {
   const router = useRouter();
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -295,41 +364,9 @@ export default function OnboardingScreen() {
         </Animated.View>
 
         <View style={styles.spacer}>
-          {ONBOARDING_DATA.map((item, index) => {
-            const animatedTextStyle = useAnimatedStyle(() => {
-              const inputRange = [
-                (index - 1) * ITEM_WIDTH,
-                index * ITEM_WIDTH,
-                (index + 1) * ITEM_WIDTH,
-              ];
-
-              const opacity = interpolate(
-                scrollX.value,
-                inputRange,
-                [0, 1, 0],
-                Extrapolation.CLAMP,
-              );
-              const translateY = interpolate(
-                scrollX.value,
-                inputRange,
-                [15, 0, -15],
-                Extrapolation.CLAMP,
-              );
-
-              return {
-                opacity,
-                transform: [{ translateY }],
-                position: "absolute",
-                width: "100%",
-              };
-            });
-
-            return (
-              <Animated.View key={item.id} style={animatedTextStyle}>
-                <Text style={styles.cinematicText}>{item.cinematicTitle}</Text>
-              </Animated.View>
-            );
-          })}
+          {ONBOARDING_DATA.map((item, index) => (
+            <CinematicTextItem key={item.id} item={item} index={index} scrollX={scrollX} />
+          ))}
         </View>
 
         <Animated.View
@@ -363,43 +400,9 @@ export default function OnboardingScreen() {
           style={styles.footer}
         >
           <View style={styles.pagination}>
-            {ONBOARDING_DATA.map((_, index) => {
-              const dotAnimatedStyle = useAnimatedStyle(() => {
-                const inputRange = [
-                  (index - 1) * ITEM_WIDTH,
-                  index * ITEM_WIDTH,
-                  (index + 1) * ITEM_WIDTH,
-                ];
-
-                const dotWidth = interpolate(
-                  scrollX.value,
-                  inputRange,
-                  [8, 24, 8],
-                  Extrapolation.CLAMP,
-                );
-                const backgroundColor = interpolateColor(
-                  scrollX.value,
-                  inputRange,
-                  [
-                    "rgba(92, 124, 84, 0.3)",
-                    "#5C7C54",
-                    "rgba(92, 124, 84, 0.3)",
-                  ],
-                );
-
-                return {
-                  width: dotWidth,
-                  backgroundColor,
-                };
-              });
-
-              return (
-                <Animated.View
-                  key={index}
-                  style={[styles.dot, dotAnimatedStyle]}
-                />
-              );
-            })}
+            {ONBOARDING_DATA.map((_, index) => (
+              <PaginationDot key={index} index={index} scrollX={scrollX} />
+            ))}
           </View>
 
           <TouchableOpacity

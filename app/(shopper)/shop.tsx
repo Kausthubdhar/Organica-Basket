@@ -5,19 +5,16 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
   Platform,
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons, FontAwesome5, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import Animated, { FadeInDown, FadeInRight, FadeInUp } from "react-native-reanimated";
+import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
 import { BlurView } from "expo-blur";
 import { useRouter } from "expo-router";
 import { supabase } from "../../lib/supabase";
-
-const { width } = Dimensions.get("window");
 
 export default function StoresScreen() {
   const router = useRouter();
@@ -56,7 +53,8 @@ export default function StoresScreen() {
           .single();
         setUserProfile(data);
       }
-    } catch (error) {
+    } catch (err) {
+      console.error(err);
     } finally {
       setLoading(false);
     }

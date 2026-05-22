@@ -4,9 +4,11 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Dimensions,
   Platform,
   ScrollView,
+  Modal,
+  TextInput,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons";
@@ -17,10 +19,7 @@ import { useRouter } from "expo-router";
 import { BlurView } from "expo-blur";
 import { supabase } from "../../lib/supabase";
 import * as Haptics from "expo-haptics";
-import { Modal, TextInput, ActivityIndicator } from "react-native";
 import { showModernAlert } from "../../components/ModernAlert";
-
-const { width } = Dimensions.get("window");
 
 export default function BasketScreen() {
   const router = useRouter();
@@ -182,7 +181,7 @@ export default function BasketScreen() {
           <Animated.View entering={FadeInUp.delay(400)} style={styles.textContainer}>
             <Text style={styles.title}>Your basket is empty</Text>
             <Text style={styles.subtitle}>
-              Looks like you haven't added any fresh harvest to your basket yet.
+              Looks like you haven&apos;t added any fresh harvest to your basket yet.
             </Text>
           </Animated.View>
 

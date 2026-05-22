@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, ActivityIndicator, TextInput } from "react-native";
 import { showModernAlert } from "../../../components/ModernAlert";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons, FontAwesome5, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
 import { Image } from "expo-image";
 import { supabase } from "../../../lib/supabase";
@@ -14,7 +14,6 @@ import { decode } from 'base64-arraybuffer';
 import { useRouter } from "expo-router";
 
 const SOFT_GREEN = "#4A6038";
-const ACTIVE_ORANGE = "#FF8C42";
 
 export default function OwnerProfileScreen() {
   const router = useRouter();
@@ -56,6 +55,7 @@ export default function OwnerProfileScreen() {
       setEditStatusMessage(storeData?.status_message || "");
       setEditNextDelivery(storeData?.next_delivery_date || "");
     } catch (err) {
+      console.error(err);
     } finally {
       setLoading(false);
     }

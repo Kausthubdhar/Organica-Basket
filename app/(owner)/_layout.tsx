@@ -1,6 +1,4 @@
-import { Stack, useRouter, useSegments } from "expo-router";
-import { useEffect } from "react";
-import { supabase } from "../../lib/supabase";
+import { Stack } from "expo-router";
 
 export default function OwnerStackLayout() {
   return (

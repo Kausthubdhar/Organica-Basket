@@ -13,22 +13,19 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import Animated, { 
   FadeInDown, 
   FadeInUp, 
-  SlideInRight, 
   SlideInDown, 
   useAnimatedStyle, 
   withTiming, 
   interpolate,
-  useSharedValue,
-  withSpring
+  useSharedValue
 } from "react-native-reanimated";
 import { BlurView } from "expo-blur";
 import { supabase } from "../../lib/supabase";
-import * as Haptics from "expo-haptics";
 import { useCart } from "../../context/CartContext";
 
 const { width } = Dimensions.get("window");
@@ -49,11 +46,7 @@ export default function StoreDetail() {
 
   const categories = ["All", ...new Set(products.map(p => p.category).filter(Boolean))];
 
-  useEffect(() => {
-    fetchStoreAndProducts();
-  }, [id]);
-
-  const fetchStoreAndProducts = async () => {
+  const fetchStoreAndProducts = React.useCallback(async () => {
     try {
       // Fetch Store Info
       const { data: storeData } = await supabase
@@ -70,10 +63,15 @@ export default function StoreDetail() {
         .eq("store_id", id);
       setProducts(productsData || []);
     } catch (err) {
+      console.error(err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    fetchStoreAndProducts();
+  }, [fetchStoreAndProducts]);
 
 
   const toggleSearch = () => {

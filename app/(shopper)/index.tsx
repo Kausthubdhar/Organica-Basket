@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Dimensions,
   Platform,
   ActivityIndicator,
   DeviceEventEmitter,
@@ -15,19 +14,15 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons, FontAwesome5, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import Animated, { 
-  FadeInDown, 
-  FadeInRight, 
+  FadeInDown,
   FadeInUp,
   useSharedValue,
   useAnimatedScrollHandler,
-  withSpring,
+  runOnJS,
 } from "react-native-reanimated";
 import { BlurView } from "expo-blur";
-import { LinearGradient } from "expo-linear-gradient";
 import { supabase } from "../../lib/supabase";
 import * as Haptics from "expo-haptics";
-
-const { width } = Dimensions.get("window");
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -40,34 +35,34 @@ export default function HomeScreen() {
   const lastScrollY = useSharedValue(0);
   const isTabBarVisible = useSharedValue(1);
 
+  const toggleTabBarJS = (visible: number) => {
+    DeviceEventEmitter.emit('TOGGLE_TAB_BAR', visible);
+  };
+
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       const currentY = event.contentOffset.y;
-      if (currentY <= 0) isTabBarVisible.value = withSpring(1);
-      else if (currentY > lastScrollY.value + 10 && currentY > 50) isTabBarVisible.value = withSpring(0);
-      else if (currentY < lastScrollY.value - 20) isTabBarVisible.value = withSpring(1);
+      if (currentY <= 0) {
+        if (isTabBarVisible.value !== 1) {
+          isTabBarVisible.value = 1;
+          runOnJS(toggleTabBarJS)(1);
+        }
+      } else if (currentY > lastScrollY.value + 10 && currentY > 50) {
+        if (isTabBarVisible.value !== 0) {
+          isTabBarVisible.value = 0;
+          runOnJS(toggleTabBarJS)(0);
+        }
+      } else if (currentY < lastScrollY.value - 20) {
+        if (isTabBarVisible.value !== 1) {
+          isTabBarVisible.value = 1;
+          runOnJS(toggleTabBarJS)(1);
+        }
+      }
       lastScrollY.value = currentY;
     },
   });
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      DeviceEventEmitter.emit('TOGGLE_TAB_BAR', isTabBarVisible.value);
-    }, 100);
-    return () => clearInterval(interval);
-  }, []);
-
-  useFocusEffect(
-    React.useCallback(() => {
-      fetchProfile();
-    }, [])
-  );
-
-  useEffect(() => {
-    fetchStores();
-  }, []);
-
-  const fetchProfile = async () => {
+  const fetchProfile = React.useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -79,20 +74,30 @@ export default function HomeScreen() {
         setUserProfile(data);
       }
     } catch (error) {
-      // Error handling
+      console.error(error);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const fetchStores = async () => {
+  const fetchStores = React.useCallback(async () => {
     const { data } = await supabase
       .from("stores")
       .select("*")
       .order("created_at", { ascending: false });
     
     if (data) setStores(data);
-  };
+  }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchProfile();
+    }, [fetchProfile])
+  );
+
+  useEffect(() => {
+    fetchStores();
+  }, [fetchStores]);
 
   const toggleFollow = (id: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

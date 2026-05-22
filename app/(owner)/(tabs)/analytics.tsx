@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from "react";
 import {
   View, Text, StyleSheet, ScrollView,
-  TouchableOpacity, Dimensions, Platform, ActivityIndicator
+  Platform, ActivityIndicator
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
 import { supabase } from "../../../lib/supabase";
-
-const { width } = Dimensions.get("window");
 const SOFT_GREEN = "#4A6038";
 const ACTIVE_ORANGE = "#FF8C42";
 
@@ -64,6 +62,7 @@ export default function AnalyticsScreen() {
         setStats(prev => ({ ...prev, totalProducts: productCount || 0 }));
       }
     } catch (err) {
+      console.error(err);
     } finally {
       setLoading(false);
     }

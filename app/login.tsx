@@ -22,8 +22,6 @@ import {
 import Animated, {
   FadeIn,
   FadeInDown,
-  FadeInUp,
-  FadeOut,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
@@ -47,7 +45,7 @@ export default function LoginScreen() {
   const [resendTimer, setResendTimer] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  const otpRefs = useRef<Array<TextInput | null>>([]);
+  const otpRefs = useRef<(TextInput | null)[]>([]);
   const resendRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Animation values
@@ -62,7 +60,7 @@ export default function LoginScreen() {
     cardOpacity.value = withTiming(1, { duration: 600 });
     heroScale.value = withTiming(1, { duration: 1200 });
     return () => { if (resendRef.current) clearInterval(resendRef.current); };
-  }, []);
+  }, [cardOpacity, cardTranslateY, heroScale]);
 
   const cardStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: cardTranslateY.value }],
@@ -196,13 +194,6 @@ export default function LoginScreen() {
     await handleSendOtp();
   };
 
-  const handleBack = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    transitionStep("email");
-    setOtp(["", "", "", "", "", ""]);
-    setError(null);
-  };
-
   const stepStyle = useAnimatedStyle(() => ({ opacity: stepOpacity.value }));
   const otpComplete = otp.join("").length === OTP_LENGTH;
 
@@ -267,7 +258,7 @@ export default function LoginScreen() {
                 <View>
                   <Text style={styles.cardTitle}>Continue with Email</Text>
                   <Text style={styles.cardSubtitle}>
-                    New or returning — just enter your email.{"\n"}We'll send a quick verification code.
+                    New or returning — just enter your email.{"\n"}We&apos;ll send a quick verification code.
                   </Text>
 
                   {/* Email Input */}
@@ -353,7 +344,7 @@ export default function LoginScreen() {
 
                   <Text style={styles.cardTitle}>Enter the Code</Text>
                   <Text style={styles.cardSubtitle}>
-                    We've sent a 6-digit code to your email.{"\n"}It expires in 10 minutes.
+                    We&apos;ve sent a 6-digit code to your email.{"\n"}It expires in 10 minutes.
                   </Text>
 
                   {/* OTP Boxes */}
@@ -409,7 +400,7 @@ export default function LoginScreen() {
                     style={styles.resendRow}
                   >
                     <Text style={styles.resendText}>
-                      Didn't get it?{"  "}
+                      Didn&apos;t get it?{"  "}
                       {resendTimer > 0 ? (
                         <Text style={styles.resendTimerText}>
                           Resend in {resendTimer}s

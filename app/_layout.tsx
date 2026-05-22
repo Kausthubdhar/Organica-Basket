@@ -43,7 +43,7 @@ export default function RootLayout() {
     setIsOnboarded(data?.is_onboarded ?? false);
     setRole(data?.role ?? null);
     setProfileLoading(false);
-  }, []);
+  }, [isOnboarded]);
 
   // ─── Step 1: Auth Listener ────────────────────────────────────────────────
   useEffect(() => {
@@ -71,13 +71,13 @@ export default function RootLayout() {
     });
 
     return () => listener.subscription.unsubscribe();
-  }, []);
+  }, [fetchProfile, router]);
 
   // ─── Step 2: Initial profile fetch when session is first loaded ───────────
   useEffect(() => {
     if (!session?.user?.id) return;
     fetchProfile(session.user.id);
-  }, [session?.user?.id]);
+  }, [session?.user?.id, fetchProfile]);
 
   // ─── Step 3: Realtime subscription – re-fetches when profile is updated ───
   // This is the KEY FIX: when the onboarding form upserts the profile,
@@ -149,7 +149,7 @@ export default function RootLayout() {
         setTimeout(() => router.replace("/(shopper)" as any), 100);
       }
     }
-  }, [session, isOnboarded, role, segments[0], profileLoading]);
+  }, [session, isOnboarded, role, segments, profileLoading, router]);
 
   // ─── Splash while loading ─────────────────────────────────────────────────
   if (session === undefined || (session !== null && isOnboarded === null)) {

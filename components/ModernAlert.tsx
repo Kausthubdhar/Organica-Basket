@@ -44,7 +44,7 @@ export default function ModernAlert() {
     onPress?.();
   };
 
-  const isConfirm = config.type === 'confirm' || (config.buttons && config.buttons.length > 0);
+
   const icon = config.type === 'success' ? 'checkmark-circle' : 
                config.type === 'error' ? 'alert-circle' : 
                config.type === 'confirm' ? 'help-circle' : 'information-circle';

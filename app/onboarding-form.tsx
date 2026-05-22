@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { showModernAlert } from "../components/ModernAlert";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons, FontAwesome5, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons, FontAwesome5 } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -23,7 +23,6 @@ import { supabase } from "../lib/supabase";
 import Animated, { FadeInDown, SlideInRight, ZoomIn } from "react-native-reanimated";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
-import { BlurView } from "expo-blur";
 
 export default function OnboardingForm() {
   const router = useRouter();
@@ -151,7 +150,7 @@ export default function OnboardingForm() {
 
       return publicUrl;
     } catch (err) {
-
+      console.error(err);
       // Fallback for demo if bucket doesn't exist
       return "https://images.unsplash.com/photo-1542838132-92c53300491e";
     }
@@ -292,7 +291,7 @@ export default function OnboardingForm() {
                 <Ionicons name="arrow-back" size={20} color="#1E261E" />
               </TouchableOpacity>
               <Text style={styles.title}>Identity</Text>
-              <Text style={styles.subtitle}>Let's set up your profile</Text>
+              <Text style={styles.subtitle}>Let&apos;s set up your profile</Text>
               <TextInput value={fullName} onChangeText={setFullName} placeholder="Full Name" style={styles.input} />
               <TextInput value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="Phone Number" style={styles.input} />
               <Text style={styles.label}>Gender</Text>
