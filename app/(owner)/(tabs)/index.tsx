@@ -56,7 +56,10 @@ export default function OwnerDashboard() {
   const updateOrderStatus = async (orderId: string, newStatus: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const { error } = await supabase.from("orders").update({ status: newStatus }).eq("id", orderId);
-    if (!error) {
+    if (error) {
+      console.error("Update error:", error);
+      alert("Error updating order: " + error.message);
+    } else {
       setPendingOrders(prev => prev.filter(o => o.id !== orderId));
       setStats(prev => ({ ...prev, orders: prev.orders - 1 }));
     }
@@ -213,10 +216,10 @@ export default function OwnerDashboard() {
                   </TouchableOpacity>
                   
                   <TouchableOpacity 
-                    onPress={() => updateOrderStatus(order.id, "packed")}
+                    onPress={() => updateOrderStatus(order.id, "delivered")}
                     style={styles.packBtn}
                   >
-                    <Text style={styles.packBtnText}>Mark Packed</Text>
+                    <Text style={styles.packBtnText}>Mark Delivered</Text>
                   </TouchableOpacity>
                 </View>
               </Animated.View>
@@ -314,11 +317,11 @@ export default function OwnerDashboard() {
               <TouchableOpacity 
                 style={styles.completeOrderBtn}
                 onPress={() => {
-                  updateOrderStatus(selectedOrder.id, "packed");
+                  updateOrderStatus(selectedOrder.id, "delivered");
                   setShowOrderModal(false);
                 }}
               >
-                <Text style={styles.completeOrderBtnText}>Mark as Packed & Ready</Text>
+                <Text style={styles.completeOrderBtnText}>Mark as Delivered</Text>
               </TouchableOpacity>
             </ScrollView>
           )}
@@ -330,7 +333,7 @@ export default function OwnerDashboard() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F5F6E9" },
-  scroll: { padding: 24, paddingBottom: 120 },
+  scroll: { padding: 24, paddingBottom: 24 },
   loading: { flex: 1, justifyContent: "center", alignItems: "center" },
   header: { marginBottom: 32 },
   welcome: { fontSize: 16, color: "#8A998A", marginBottom: 4 },

@@ -355,7 +355,7 @@ export default function OwnerProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F5F6E9" },
-  scroll: { padding: 24, paddingBottom: 120 },
+  scroll: { padding: 24, paddingBottom: 24 },
   loading: { flex: 1, justifyContent: "center", alignItems: "center" },
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 },
   title: { fontSize: 32, fontWeight: "800", color: "#1E261E", fontFamily: Platform.OS === "ios" ? "Georgia" : "serif" },

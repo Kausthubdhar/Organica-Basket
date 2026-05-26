@@ -1,189 +1,334 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
-  View, Text, StyleSheet, ScrollView,
-  Platform, ActivityIndicator
+  View, Text, StyleSheet, ScrollView, TextInput,
+  TouchableOpacity, Platform, ActivityIndicator, KeyboardAvoidingView,
+  StatusBar
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
+import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from "@expo/vector-icons";
+import Animated, { FadeInDown, FadeInUp, ZoomIn, Layout, LinearTransition } from "react-native-reanimated";
 import { supabase } from "../../../lib/supabase";
-const SOFT_GREEN = "#4A6038";
+import * as Haptics from "expo-haptics";
+import { BlurView } from "expo-blur";
+
+// Premium Dark Theme Colors
+const BG_DARK = "#0C100C";
+const SURFACE_DARK = "rgba(255, 255, 255, 0.05)";
+const SURFACE_BORDER = "rgba(255, 255, 255, 0.1)";
+const NEON_GREEN = "#9DFF50";
+const TEXT_PRIMARY = "#FFFFFF";
+const TEXT_SECONDARY = "#8A998A";
 const ACTIVE_ORANGE = "#FF8C42";
 
-// Simple bar chart component
-function BarChart({ data }: { data: { label: string; value: number; color: string }[] }) {
-  const maxVal = Math.max(...data.map(d => d.value), 1);
+// Dynamic Reanimated Horizontal Bar Chart Component
+function AiBarChart({ data }: { data: { label: string; value: number; color: string }[] }) {
+  if (!data || data.length === 0) return null;
+  const maxVal = Math.max(...data.map(d => Number(d.value)), 1);
+  
   return (
-    <View style={chart.container}>
-      {data.map((item, i) => (
-        <View key={i} style={chart.barGroup}>
-          <Text style={chart.barValue}>{item.value}</Text>
-          <View style={[chart.bar, { height: (item.value / maxVal) * 100, backgroundColor: item.color }]} />
-          <Text style={chart.barLabel}>{item.label}</Text>
-        </View>
-      ))}
+    <View style={chartStyles.container}>
+      {data.map((item, i) => {
+        const percentage = Math.max((Number(item.value) / maxVal) * 100, 2); // Minimum 2% width so it's always visible
+        const barColor = item.color || NEON_GREEN;
+
+        return (
+          <View key={i} style={chartStyles.row}>
+            <View style={chartStyles.labelHeader}>
+              <Text style={chartStyles.labelText} numberOfLines={1}>{item.label}</Text>
+              <Text style={[chartStyles.valueText, { color: barColor }]}>{item.value}</Text>
+            </View>
+            
+            {/* Dark Track Background */}
+            <View style={chartStyles.track}>
+              {/* Colored Animated Bar */}
+              <Animated.View 
+                entering={FadeInDown.delay(i * 150).springify().damping(14)} 
+                style={[
+                  chartStyles.bar, 
+                  { 
+                    width: `${percentage}%`, 
+                    backgroundColor: barColor,
+                    shadowColor: barColor,
+                  }
+                ]} 
+              />
+            </View>
+          </View>
+        );
+      })}
     </View>
   );
 }
 
-const chart = StyleSheet.create({
-  container: { flexDirection: "row", alignItems: "flex-end", gap: 8, height: 130, paddingTop: 20 },
-  barGroup: { flex: 1, alignItems: "center", gap: 4 },
-  bar: { width: "70%", borderRadius: 8, minHeight: 4 },
-  barValue: { fontSize: 10, fontWeight: "800", color: "#1E261E" },
-  barLabel: { fontSize: 9, color: "#8A998A", fontWeight: "600" },
+const chartStyles = StyleSheet.create({
+  container: { gap: 18, marginTop: 10, width: '100%' },
+  row: { width: '100%' },
+  labelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  labelText: { fontSize: 13, color: TEXT_PRIMARY, fontWeight: '600', letterSpacing: 0.5, flex: 1, paddingRight: 10 },
+  valueText: { fontSize: 14, fontWeight: '900' },
+  track: { height: 10, backgroundColor: 'rgba(255, 255, 255, 0.06)', borderRadius: 5, overflow: 'hidden' },
+  bar: { height: '100%', borderRadius: 5, shadowOpacity: 0.9, shadowRadius: 10, elevation: 5 },
 });
+
+type Message = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  chart?: {
+    type: string;
+    data: any[];
+  };
+};
+
+const SUGGESTED_PROMPTS = [
+  { icon: "trending-up", text: "Analyze today's revenue" },
+  { icon: "alert-circle", text: "Show low stock products" },
+  { icon: "star", text: "What are my best sellers?" },
+  { icon: "calendar", text: "Predict next week's demand" }
+];
 
 export default function AnalyticsScreen() {
   const [store, setStore] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    totalProducts: 0,
-    totalOrders: 0,
-    totalRevenue: 0,
-    weeklyOrders: [0, 0, 0, 0, 0, 0, 0],
-  });
+  
+  // AI Chat State
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: '1',
+      role: 'assistant',
+      content: "System initialized. I am Organica Intelligence. How can I optimize your store today?"
+    }
+  ]);
+  const [prompt, setPrompt] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
 
-  useEffect(() => { fetchAnalytics(); }, []);
+  useEffect(() => { fetchStore(); }, []);
 
-  const fetchAnalytics = async () => {
+  const fetchStore = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-
-      const { data: storeData } = await supabase
-        .from("stores").select("*").eq("owner_id", user.id).single();
+      const { data: storeData } = await supabase.from("stores").select("name").eq("owner_id", user.id).single();
       setStore(storeData);
-
-      if (storeData) {
-        const { count: productCount } = await supabase
-          .from("products").select("*", { count: "exact", head: true })
-          .eq("store_id", storeData.id);
-        setStats(prev => ({ ...prev, totalProducts: productCount || 0 }));
-      }
     } catch (err) {
       console.error(err);
-    } finally {
-      setLoading(false);
     }
   };
 
-  const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  const weeklyData = weekDays.map((label, i) => ({
-    label,
-    value: stats.weeklyOrders[i] || 0,
-    color: i === 5 || i === 6 ? ACTIVE_ORANGE : SOFT_GREEN,
-  }));
+  const executePrompt = async (textToSend: string) => {
+    if (!textToSend.trim() || isTyping) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    const userMessage: Message = { id: Date.now().toString(), role: 'user', content: textToSend.trim() };
+    setMessages(prev => [...prev, userMessage]);
+    setPrompt("");
+    setIsTyping(true);
+    
+    setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
 
-  if (loading) return <View style={styles.loading}><ActivityIndicator size="large" color={SOFT_GREEN} /></View>;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Session expired.");
+
+      const response = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/ai-analytics`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ prompt: userMessage.content })
+      });
+
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Failed to fetch insights');
+
+      const aiMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: result.insight || "Data processed successfully.",
+        chart: result.chart
+      };
+      
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setMessages(prev => [...prev, aiMessage]);
+
+    } catch (err: any) {
+      console.error(err);
+      setMessages(prev => [...prev, {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `System Error: ${err.message}`
+      }]);
+    } finally {
+      setIsTyping(false);
+      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+    }
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-
-        <Animated.View entering={FadeInDown} style={styles.header}>
-          <Text style={styles.title}>Analytics</Text>
-          <Text style={styles.subtitle}>{store?.name || "Your Store"} · Performance Overview</Text>
-        </Animated.View>
-
-        {/* KPI Cards */}
-        <View style={styles.kpiRow}>
-          {[
-            { label: "Products Listed", value: stats.totalProducts, icon: "cube-outline", color: SOFT_GREEN },
-            { label: "Total Orders", value: stats.totalOrders, icon: "receipt-outline", color: ACTIVE_ORANGE },
-            { label: "Revenue (₹)", value: stats.totalRevenue, icon: "wallet-outline", color: "#8E44AD" },
-          ].map((kpi, i) => (
-            <Animated.View key={i} entering={FadeInUp.delay(i * 100)} style={styles.kpiCard}>
-              <View style={[styles.kpiIconBox, { backgroundColor: kpi.color + "18" }]}>
-                <Ionicons name={kpi.icon as any} size={20} color={kpi.color} />
-              </View>
-              <Text style={styles.kpiValue}>{kpi.value}</Text>
-              <Text style={styles.kpiLabel}>{kpi.label}</Text>
-            </Animated.View>
-          ))}
-        </View>
-
-        {/* Weekly Orders Chart */}
-        <Animated.View entering={FadeInUp.delay(300)} style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Weekly Orders</Text>
-            <View style={styles.liveTag}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveText}>LIVE</Text>
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={BG_DARK} />
+      
+      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+        <KeyboardAvoidingView 
+          style={{ flex: 1 }} 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'padding'} 
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        >
+          
+          {/* Top Header */}
+          <View style={styles.header}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={styles.pulseDot} />
+              <Text style={styles.headerTitle}>COMMAND CENTER</Text>
             </View>
+            <Text style={styles.headerStore}>{store?.name || "Organica Network"}</Text>
           </View>
-          <BarChart data={weeklyData} />
-          <Text style={styles.chartNote}>
-            {stats.totalOrders === 0 ? "No orders yet — go live to start receiving orders!" : ""}
-          </Text>
-        </Animated.View>
 
-        {/* Store Health */}
-        <Animated.View entering={FadeInUp.delay(400)} style={styles.card}>
-          <Text style={styles.cardTitle}>Store Health</Text>
-          <View style={{ gap: 14, marginTop: 16 }}>
-            {[
-              { label: "Store Photo", done: !!store?.image_url },
-              { label: "Category Set", done: !!store?.category },
-              { label: "Location Verified", done: !!store?.location },
-              { label: "First Product Listed", done: stats.totalProducts > 0 },
-              { label: "Accepting Orders", done: store?.is_accepting_orders },
-            ].map((item, i) => (
-              <View key={i} style={styles.healthRow}>
-                <View style={[styles.healthIcon, { backgroundColor: item.done ? "#E8F5E9" : "#F4F5E6" }]}>
-                  <Ionicons
-                    name={item.done ? "checkmark-circle" : "ellipse-outline"}
-                    size={18}
-                    color={item.done ? "#27AE60" : "#C0CDB8"}
-                  />
-                </View>
-                <Text style={[styles.healthLabel, !item.done && { color: "#8A998A" }]}>{item.label}</Text>
-                {!item.done && <Text style={styles.healthPending}>Pending</Text>}
+          {/* Generative UI Feed */}
+          <ScrollView 
+            style={{ flex: 1 }}
+            ref={scrollViewRef}
+            showsVerticalScrollIndicator={false} 
+            contentContainerStyle={styles.feedScroll}
+          >
+            {messages.map((msg, index) => {
+              if (msg.role === 'user') {
+                return (
+                  <Animated.View 
+                    key={msg.id} 
+                    layout={LinearTransition.springify()}
+                    entering={FadeInDown} 
+                    style={styles.commandPill}
+                  >
+                    <Ionicons name="terminal" size={14} color={NEON_GREEN} />
+                    <Text style={styles.commandText}>{msg.content}</Text>
+                  </Animated.View>
+                );
+              }
+
+              return (
+                <Animated.View 
+                  key={msg.id} 
+                  layout={LinearTransition.springify()}
+                  entering={FadeInUp} 
+                  style={styles.insightCard}
+                >
+                  <View style={styles.insightHeader}>
+                    <View style={styles.insightIconBg}>
+                      <Ionicons name="sparkles" size={16} color={BG_DARK} />
+                    </View>
+                    <Text style={styles.insightTitle}>INTELLIGENCE REPORT</Text>
+                  </View>
+                  
+                  <Text style={styles.insightText}>{msg.content}</Text>
+
+                  {msg.chart && msg.chart.data && msg.chart.data.length > 0 && (
+                    <View style={styles.chartWrapper}>
+                      <AiBarChart data={msg.chart.data} />
+                    </View>
+                  )}
+                </Animated.View>
+              );
+            })}
+            
+            {/* Quick Prompts - Show only if no user messages exist */}
+            {messages.length === 1 && !isTyping && (
+              <Animated.View entering={FadeInUp.delay(300)} style={styles.quickPromptsGrid}>
+                {SUGGESTED_PROMPTS.map((item, i) => (
+                  <TouchableOpacity 
+                    key={i} 
+                    style={styles.quickPromptCard}
+                    onPress={() => executePrompt(item.text)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name={item.icon as any} size={20} color={NEON_GREEN} />
+                    <Text style={styles.quickPromptText}>{item.text}</Text>
+                  </TouchableOpacity>
+                ))}
+              </Animated.View>
+            )}
+
+            {isTyping && (
+              <Animated.View entering={ZoomIn} style={styles.loadingCard}>
+                <ActivityIndicator size="small" color={NEON_GREEN} />
+                <Text style={styles.loadingText}>Processing data streams...</Text>
+              </Animated.View>
+            )}
+          </ScrollView>
+
+          {/* Floating Command Palette */}
+          <View style={styles.paletteContainer}>
+            <BlurView intensity={20} tint="dark" style={styles.floatingInputWrapper}>
+              <View style={styles.inputGlowBorder}>
+                <Ionicons name="chevron-forward" size={20} color={NEON_GREEN} style={{ marginLeft: 16 }} />
+                <TextInput
+                  value={prompt}
+                  onChangeText={setPrompt}
+                  placeholder="Enter command query..."
+                  placeholderTextColor="rgba(255,255,255,0.4)"
+                  style={styles.paletteInput}
+                  onSubmitEditing={() => executePrompt(prompt)}
+                  returnKeyType="send"
+                  keyboardAppearance="dark"
+                />
+                <TouchableOpacity 
+                  onPress={() => executePrompt(prompt)} 
+                  style={[styles.paletteSendBtn, !prompt.trim() && { opacity: 0.3 }]} 
+                  disabled={!prompt.trim() || isTyping}
+                >
+                  <Ionicons name="paper-plane" size={16} color={BG_DARK} />
+                </TouchableOpacity>
               </View>
-            ))}
+            </BlurView>
           </View>
-        </Animated.View>
 
-        {/* Tip */}
-        <Animated.View entering={FadeInUp.delay(500)} style={styles.tipCard}>
-          <MaterialCommunityIcons name="lightbulb-on-outline" size={28} color="#F1C40F" />
-          <View style={{ flex: 1, marginLeft: 14 }}>
-            <Text style={styles.tipTitle}>Pro Tip</Text>
-            <Text style={styles.tipDesc}>
-              Stores that update inventory weekly see 2× more repeat customers. Keep it fresh! 🌿
-            </Text>
-          </View>
-        </Animated.View>
-
-      </ScrollView>
-    </SafeAreaView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F5F6E9" },
-  scroll: { padding: 24, paddingBottom: 120 },
-  loading: { flex: 1, justifyContent: "center", alignItems: "center" },
-  header: { marginBottom: 28 },
-  title: { fontSize: 32, fontWeight: "800", color: "#1E261E", fontFamily: Platform.OS === "ios" ? "Georgia" : "serif" },
-  subtitle: { fontSize: 14, color: "#8A998A", marginTop: 4 },
-  kpiRow: { flexDirection: "row", gap: 12, marginBottom: 24 },
-  kpiCard: { flex: 1, backgroundColor: "#fff", borderRadius: 20, padding: 14, alignItems: "center", shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 10, elevation: 2 },
-  kpiIconBox: { width: 40, height: 40, borderRadius: 12, justifyContent: "center", alignItems: "center", marginBottom: 8 },
-  kpiValue: { fontSize: 22, fontWeight: "900", color: "#1E261E" },
-  kpiLabel: { fontSize: 10, color: "#8A998A", fontWeight: "700", textAlign: "center", marginTop: 2 },
-  card: { backgroundColor: "#fff", borderRadius: 24, padding: 20, marginBottom: 20, shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 15, elevation: 2 },
-  cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  cardTitle: { fontSize: 18, fontWeight: "800", color: "#1E261E" },
-  liveTag: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#E8F5E9", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
-  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#27AE60" },
-  liveText: { fontSize: 10, fontWeight: "900", color: "#27AE60" },
-  chartNote: { fontSize: 12, color: "#8A998A", textAlign: "center", marginTop: 12, fontStyle: "italic" },
-  healthRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  healthIcon: { width: 32, height: 32, borderRadius: 10, justifyContent: "center", alignItems: "center" },
-  healthLabel: { flex: 1, fontSize: 14, fontWeight: "600", color: "#1E261E" },
-  healthPending: { fontSize: 11, fontWeight: "700", color: "#FF8C42", backgroundColor: "#FFF2EA", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
-  tipCard: { flexDirection: "row", backgroundColor: "#2D382D", padding: 20, borderRadius: 24, alignItems: "center" },
-  tipTitle: { color: "#fff", fontSize: 15, fontWeight: "800", marginBottom: 4 },
-  tipDesc: { color: "rgba(255,255,255,0.65)", fontSize: 13, lineHeight: 18 },
+  container: { flex: 1, backgroundColor: BG_DARK },
+  header: { 
+    paddingHorizontal: 24, 
+    paddingVertical: 16, 
+    borderBottomWidth: 1, 
+    borderBottomColor: SURFACE_BORDER,
+    backgroundColor: BG_DARK,
+    zIndex: 10
+  },
+  pulseDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: NEON_GREEN, shadowColor: NEON_GREEN, shadowOpacity: 0.8, shadowRadius: 6 },
+  headerTitle: { fontSize: 13, fontWeight: "900", color: TEXT_PRIMARY, letterSpacing: 2 },
+  headerStore: { fontSize: 12, color: TEXT_SECONDARY, marginTop: 4, fontWeight: '600' },
+  
+  feedScroll: { padding: 20, paddingBottom: 20, gap: 20 },
+  
+  // Quick Prompts
+  quickPromptsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 20 },
+  quickPromptCard: { width: '48%', backgroundColor: SURFACE_DARK, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: SURFACE_BORDER },
+  quickPromptText: { fontSize: 13, color: TEXT_PRIMARY, fontWeight: '600', marginTop: 12, lineHeight: 18 },
+
+  // User Command Pill
+  commandPill: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: SURFACE_DARK, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, alignSelf: 'flex-end', borderWidth: 1, borderColor: SURFACE_BORDER },
+  commandText: { fontSize: 14, fontWeight: '600', color: TEXT_PRIMARY, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
+
+  // AI Insight Card
+  insightCard: { backgroundColor: SURFACE_DARK, borderRadius: 24, padding: 24, width: '100%', borderWidth: 1, borderColor: SURFACE_BORDER },
+  insightHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
+  insightIconBg: { width: 32, height: 32, borderRadius: 10, backgroundColor: NEON_GREEN, justifyContent: 'center', alignItems: 'center', shadowColor: NEON_GREEN, shadowOpacity: 0.4, shadowRadius: 10 },
+  insightTitle: { fontSize: 13, fontWeight: '900', color: TEXT_PRIMARY, letterSpacing: 1 },
+  insightText: { fontSize: 15, lineHeight: 24, color: '#D0D6D0' },
+  chartWrapper: { marginTop: 24, paddingTop: 24, borderTopWidth: 1, borderTopColor: SURFACE_BORDER },
+  
+  loadingCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: 'transparent', paddingHorizontal: 20, paddingVertical: 16, borderRadius: 20, alignSelf: 'flex-start' },
+  loadingText: { fontSize: 13, fontWeight: '700', color: TEXT_SECONDARY, textTransform: 'uppercase', letterSpacing: 1 },
+  
+  // Floating Command Palette
+  paletteContainer: { paddingHorizontal: 20, paddingBottom: 8, paddingTop: 10, backgroundColor: 'transparent' },
+  floatingInputWrapper: { borderRadius: 30, overflow: 'hidden', backgroundColor: 'rgba(0,0,0,0.4)' },
+  inputGlowBorder: { flexDirection: 'row', height: 60, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(157, 255, 80, 0.3)', borderRadius: 30 },
+  paletteInput: { flex: 1, height: '100%', paddingHorizontal: 12, fontSize: 15, fontWeight: '600', color: TEXT_PRIMARY },
+  paletteSendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: NEON_GREEN, justifyContent: 'center', alignItems: 'center', marginRight: 8, shadowColor: NEON_GREEN, shadowOpacity: 0.5, shadowRadius: 10, elevation: 5 }
 });

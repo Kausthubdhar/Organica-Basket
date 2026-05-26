@@ -643,7 +643,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 4,
   },
-  list: { paddingHorizontal: 16, paddingBottom: 100 },
+  list: { paddingHorizontal: 16, paddingBottom: 24 },
   columnWrapper: { justifyContent: "space-between", paddingHorizontal: 8 },
   loading: { flex: 1, justifyContent: "center", alignItems: "center" },
   productCard: {
