@@ -143,11 +143,13 @@ export default function HomeScreen() {
             <Text style={styles.namasteText}>Namaste,</Text>
             <Text style={styles.userNameText}>{userProfile?.full_name?.split(" ")[0] || "User"}</Text>
             
-            {userProfile?.location_data && (
+            {userProfile?.location_data && (Array.isArray(userProfile.location_data) ? userProfile.location_data.length > 0 : true) && (
               <View style={styles.locationContainer}>
                 <Ionicons name="location" size={14} color="#FF8C42" />
                 <Text style={styles.headerLocationText}>
-                  {userProfile.location_data.city_state}
+                  {Array.isArray(userProfile.location_data) 
+                    ? userProfile.location_data[0]?.city_state || "Unknown Location"
+                    : userProfile.location_data.city_state || "Unknown Location"}
                 </Text>
               </View>
             )}
