@@ -36,6 +36,7 @@ export default function HomeScreen() {
   const [closedStoreModal, setClosedStoreModal] = useState({ show: false, name: '' });
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [allProducts, setAllProducts] = useState<any[]>([]);
 
   const categories = [
     "Dairy Products", "Fruits", "Grains", "Herbs & Spices", "Leafy Greens",
@@ -99,6 +100,11 @@ export default function HomeScreen() {
     if (data) setStores(data);
   }, []);
 
+  const fetchAllProducts = React.useCallback(async () => {
+    const { data } = await supabase.from("products").select("*");
+    if (data) setAllProducts(data);
+  }, []);
+
   useFocusEffect(
     React.useCallback(() => {
       fetchProfile();
@@ -107,7 +113,8 @@ export default function HomeScreen() {
 
   useEffect(() => {
     fetchStores();
-  }, [fetchStores]);
+    fetchAllProducts();
+  }, [fetchStores, fetchAllProducts]);
 
   const toggleFollow = (id: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -115,6 +122,39 @@ export default function HomeScreen() {
   };
 
   const placeholderImg = "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=800";
+
+  const searchResults = React.useMemo(() => {
+    if (!searchQuery) return [];
+    const query = searchQuery.toLowerCase();
+    
+    const filtered = allProducts.filter(p => 
+      p.name?.toLowerCase().includes(query) || 
+      p.category?.toLowerCase().includes(query)
+    );
+    
+    const grouped = filtered.reduce((acc: any, curr: any) => {
+      const key = curr.name.toLowerCase().trim();
+      if (!acc[key]) {
+        acc[key] = {
+          name: curr.name,
+          category: curr.category,
+          image_url: curr.image_url,
+          storeIds: new Set([curr.store_id]),
+        };
+      } else {
+        acc[key].storeIds.add(curr.store_id);
+        if (!acc[key].image_url && curr.image_url) {
+          acc[key].image_url = curr.image_url;
+        }
+      }
+      return acc;
+    }, {} as Record<string, any>);
+    
+    return Object.values(grouped).map((g: any) => ({
+      ...g,
+      storeCount: g.storeIds.size,
+    })).sort((a: any, b: any) => a.name.localeCompare(b.name));
+  }, [searchQuery, allProducts]);
 
   if (loading) {
     return (
@@ -173,7 +213,7 @@ export default function HomeScreen() {
                 <TextInput
                   ref={searchInputRef}
                   style={styles.searchInput}
-                  placeholder="Search local organic stores..."
+                  placeholder="Search products and local stores..."
                   placeholderTextColor="#8A998A"
                   value={searchQuery}
                   onChangeText={setSearchQuery}
@@ -226,38 +266,68 @@ export default function HomeScreen() {
           </View>
         </Animated.View>
 
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>Local Organic Stores</Text>
-            <View style={styles.titleUnderline} />
+        {isSearchFocused && searchQuery.length > 0 ? (
+          <View style={styles.searchResultsContainer}>
+            <Text style={styles.sectionTitle}>Products</Text>
+            {searchResults.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="basket-outline" size={48} color="#C4CEC4" />
+                <Text style={styles.emptyTitle}>No Products Found</Text>
+                <Text style={styles.emptySub}>We couldn't find any products matching "{searchQuery}". Try browsing categories above.</Text>
+              </View>
+            ) : (
+              <View style={styles.productResultsList}>
+                {searchResults.map((item, index) => (
+                  <Animated.View key={index} entering={FadeInUp.delay(index * 50)}>
+                    <TouchableOpacity 
+                      style={styles.productResultCard}
+                      activeOpacity={0.9}
+                      onPress={() => router.push(`/(shopper)/product/${encodeURIComponent(item.name)}` as any)}
+                    >
+                      <Image source={{ uri: item.image_url || placeholderImg }} style={styles.productResultImage} contentFit="cover" />
+                      <View style={styles.productResultInfo}>
+                        <Text style={styles.productResultName} numberOfLines={2}>{item.name}</Text>
+                        <Text style={styles.productResultCategory}>{item.category}</Text>
+                        <View style={styles.storeCountPill}>
+                          <Ionicons name="storefront-outline" size={14} color="#4A6038" />
+                          <Text style={styles.storeCountText}>{item.storeCount} {item.storeCount === 1 ? 'store' : 'stores'}</Text>
+                        </View>
+                      </View>
+                      <Ionicons name="chevron-forward" size={20} color="#C4CEC4" />
+                    </TouchableOpacity>
+                  </Animated.View>
+                ))}
+              </View>
+            )}
           </View>
-          <TouchableOpacity style={styles.viewAllBtn}>
-            <Text style={styles.viewAllText}>View All</Text>
-            <Ionicons name="arrow-forward" size={14} color="#FF8C42" />
-          </TouchableOpacity>
-        </View>
+        ) : (
+          <>
+            <View style={styles.sectionHeader}>
+              <View>
+                <Text style={styles.sectionTitle}>Local Organic Stores</Text>
+                <View style={styles.titleUnderline} />
+              </View>
+              <TouchableOpacity style={styles.viewAllBtn}>
+                <Text style={styles.viewAllText}>View All</Text>
+                <Ionicons name="arrow-forward" size={14} color="#FF8C42" />
+              </TouchableOpacity>
+            </View>
 
-        <View style={styles.storesList}>
-          {(() => {
-            const filteredStores = stores.filter(store => {
-              if (!searchQuery) return true;
-              const query = searchQuery.toLowerCase();
-              return store.name?.toLowerCase().includes(query) || 
-                     store.location?.toLowerCase().includes(query) || 
-                     store.address?.toLowerCase().includes(query);
-            });
+            <View style={styles.storesList}>
+              {(() => {
+                const filteredStores = stores;
 
-            if (filteredStores.length === 0) {
-              return (
-                <View style={styles.emptyContainer}>
-                  <Ionicons name="search-outline" size={48} color="#C4CEC4" />
-                  <Text style={styles.emptyTitle}>No Stores Found</Text>
-                  <Text style={styles.emptySub}>We couldn't find any stores matching "{searchQuery}".</Text>
-                </View>
-              );
-            }
+                if (filteredStores.length === 0) {
+                  return (
+                    <View style={styles.emptyContainer}>
+                      <Ionicons name="storefront-outline" size={48} color="#C4CEC4" />
+                      <Text style={styles.emptyTitle}>No Stores Found</Text>
+                      <Text style={styles.emptySub}>There are no local stores available right now.</Text>
+                    </View>
+                  );
+                }
 
-            return filteredStores.map((store, index) => {
+                return filteredStores.map((store, index) => {
               const isFollowing = following.includes(store.id);
               const isLive = store.is_accepting_orders;
               
@@ -335,6 +405,8 @@ export default function HomeScreen() {
             });
           })()}
         </View>
+        </>
+        )}
       </Animated.ScrollView>
 
       {/* Closed Store Modal */}
@@ -439,6 +511,16 @@ const styles = StyleSheet.create({
   emptyContainer: { alignItems: "center", justifyContent: "center", paddingVertical: 40 },
   emptyTitle: { fontSize: 18, fontWeight: "700", color: "#1E261E", marginTop: 12, marginBottom: 6 },
   emptySub: { fontSize: 14, color: "#8A998A", textAlign: "center", paddingHorizontal: 20 },
+
+  searchResultsContainer: { paddingHorizontal: 20, paddingBottom: 40 },
+  productResultsList: { gap: 16, marginTop: 16 },
+  productResultCard: { flexDirection: "row", alignItems: "center", backgroundColor: "#fff", borderRadius: 24, padding: 12, shadowColor: "#4A6038", shadowOpacity: 0.06, shadowRadius: 15, elevation: 4 },
+  productResultImage: { width: 80, height: 80, borderRadius: 16, backgroundColor: "#F4F5E6" },
+  productResultInfo: { flex: 1, marginLeft: 16, justifyContent: "center" },
+  productResultName: { fontSize: 16, fontWeight: "800", color: "#1E261E", marginBottom: 4 },
+  productResultCategory: { fontSize: 12, color: "#8A998A", fontWeight: "600", marginBottom: 8 },
+  storeCountPill: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#F4F5E6", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, alignSelf: "flex-start" },
+  storeCountText: { fontSize: 12, fontWeight: "700", color: "#4A6038" },
 
   sectionHeader: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", paddingHorizontal: 24, marginBottom: 24 },
   sectionTitle: { fontSize: 22, fontFamily: Platform.OS === "ios" ? "Georgia" : "serif", color: "#1E261E", fontWeight: "700" },
