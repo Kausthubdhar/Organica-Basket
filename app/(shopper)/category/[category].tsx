@@ -72,7 +72,7 @@ export default function CategoryScreen() {
         const formatted = Object.values(grouped).map((g: any) => ({
           ...g,
           storeCount: g.storeIds.size,
-        }));
+        })).sort((a: any, b: any) => a.name.localeCompare(b.name));
         
         setProducts(formatted);
       }

@@ -38,11 +38,12 @@ export default function ProductAvailabilityScreen() {
             const product = productsData.find(p => p.store_id === store.id);
             return {
               ...store,
+              productId: product?.id,
               productPrice: product?.price,
               productUnit: product?.unit,
               productImage: product?.image_url,
             };
-          });
+          }).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
           setStores(combined);
         }
       }
@@ -120,7 +121,7 @@ export default function ProductAvailabilityScreen() {
                   
                   <TouchableOpacity 
                     style={[styles.viewStoreBtn, !isLive && styles.viewStoreBtnDisabled]}
-                    onPress={() => router.push(`/shop/${store.id}` as any)}
+                    onPress={() => router.push(`/shop/${store.id}?highlightProduct=${store.productId}` as any)}
                   >
                     <Text style={[styles.viewStoreBtnText, !isLive && styles.viewStoreBtnTextDisabled]}>
                       View Store

@@ -31,7 +31,7 @@ import { useCart } from "../../context/CartContext";
 const { width } = Dimensions.get("window");
 
 export default function StoreDetail() {
-  const { id } = useLocalSearchParams();
+  const { id, highlightProduct } = useLocalSearchParams();
   const router = useRouter();
   
   const [store, setStore] = useState<any>(null);
@@ -44,7 +44,7 @@ export default function StoreDetail() {
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const searchWidth = useSharedValue(0);
 
-  const categories = ["All", ...new Set(products.map(p => p.category).filter(Boolean))];
+  const categories = ["All", ...new Set(products.map(p => p.category).filter(Boolean))].sort();
 
   const fetchStoreAndProducts = React.useCallback(async () => {
     try {
@@ -61,7 +61,21 @@ export default function StoreDetail() {
         .from("products")
         .select("*")
         .eq("store_id", id);
-      setProducts(productsData || []);
+        
+      if (productsData) {
+        setProducts(productsData);
+        if (highlightProduct) {
+          const productToHighlight = productsData.find((p: any) => String(p.id) === String(highlightProduct));
+          if (productToHighlight) {
+            setSelectedProduct(productToHighlight);
+            if (productToHighlight.category) {
+              setActiveCategory(productToHighlight.category);
+            }
+          }
+        }
+      } else {
+        setProducts([]);
+      }
     } catch (err) {
       console.error(err);
     } finally {

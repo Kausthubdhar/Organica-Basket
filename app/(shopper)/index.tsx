@@ -29,6 +29,7 @@ import * as Haptics from "expo-haptics";
 export default function HomeScreen() {
   const router = useRouter();
   const [userProfile, setUserProfile] = useState<any>(null);
+  const searchInputRef = React.useRef<TextInput>(null);
   const [loading, setLoading] = useState(true);
   const [stores, setStores] = useState<any[]>([]);
   const [following, setFollowing] = useState<string[]>([]);
@@ -37,8 +38,8 @@ export default function HomeScreen() {
   const [isSearchFocused, setIsSearchFocused] = useState(false);
 
   const categories = [
-    "Fruits", "Vegetables", "Leafy Greens", "Dairy Products", "Grains",
-    "Pulses", "Organic Snacks", "Herbs & Spices", "Oils", "Other Organic Products"
+    "Dairy Products", "Fruits", "Grains", "Herbs & Spices", "Leafy Greens",
+    "Oils", "Organic Snacks", "Other Organic Products", "Pulses", "Vegetables"
   ];
 
   const lastScrollY = useSharedValue(0);
@@ -170,6 +171,7 @@ export default function HomeScreen() {
               <View style={[styles.searchBarContainer, { flex: 1 }]}>
                 <Ionicons name="search" size={20} color="#8A998A" />
                 <TextInput
+                  ref={searchInputRef}
                   style={styles.searchInput}
                   placeholder="Search local organic stores..."
                   placeholderTextColor="#8A998A"
@@ -187,6 +189,7 @@ export default function HomeScreen() {
                 <TouchableOpacity onPress={() => {
                   setIsSearchFocused(false);
                   setSearchQuery("");
+                  searchInputRef.current?.blur();
                 }} style={{ padding: 4 }}>
                   <Text style={{ color: "#4A6038", fontWeight: "700" }}>Cancel</Text>
                 </TouchableOpacity>
