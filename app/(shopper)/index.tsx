@@ -9,6 +9,7 @@ import {
   DeviceEventEmitter,
   Modal,
   TextInput,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -33,6 +34,12 @@ export default function HomeScreen() {
   const [following, setFollowing] = useState<string[]>([]);
   const [closedStoreModal, setClosedStoreModal] = useState({ show: false, name: '' });
   const [searchQuery, setSearchQuery] = useState("");
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+
+  const categories = [
+    "Fruits", "Vegetables", "Leafy Greens", "Dairy Products", "Grains",
+    "Pulses", "Organic Snacks", "Herbs & Spices", "Oils", "Other Organic Products"
+  ];
 
   const lastScrollY = useSharedValue(0);
   const isTabBarVisible = useSharedValue(1);
@@ -123,6 +130,7 @@ export default function HomeScreen() {
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false} 
         contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
       >
         <Animated.View entering={FadeInDown.duration(800)} style={styles.header}>
           <View style={styles.headerTop}>
@@ -158,21 +166,60 @@ export default function HomeScreen() {
               </View>
             )}
             
-            <View style={styles.searchBarContainer}>
-              <Ionicons name="search" size={20} color="#8A998A" />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search local organic stores..."
-                placeholderTextColor="#8A998A"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-              />
-              {searchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => setSearchQuery("")} style={styles.clearSearchBtn}>
-                  <Ionicons name="close-circle" size={20} color="#8A998A" />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <View style={[styles.searchBarContainer, { flex: 1 }]}>
+                <Ionicons name="search" size={20} color="#8A998A" />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search local organic stores..."
+                  placeholderTextColor="#8A998A"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  onFocus={() => setIsSearchFocused(true)}
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearchQuery("")} style={styles.clearSearchBtn}>
+                    <Ionicons name="close-circle" size={20} color="#8A998A" />
+                  </TouchableOpacity>
+                )}
+              </View>
+              {isSearchFocused && (
+                <TouchableOpacity onPress={() => {
+                  setIsSearchFocused(false);
+                  setSearchQuery("");
+                }} style={{ padding: 4 }}>
+                  <Text style={{ color: "#4A6038", fontWeight: "700" }}>Cancel</Text>
                 </TouchableOpacity>
               )}
             </View>
+
+            {isSearchFocused && (
+              <Animated.View entering={FadeInDown.duration(300)} style={styles.categorySection}>
+                <Text style={styles.categoryHeaderTitle}>Explore Categories</Text>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.categoryScroll}
+                  contentContainerStyle={styles.categoryScrollContent}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {categories.map((cat, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.categoryPill}
+                      onPress={() => {
+                        // Keep search open or close it? The user navigates away, so it doesn't matter too much,
+                        // but closing it is cleaner when they come back
+                        setIsSearchFocused(false);
+                        router.push(`/(shopper)/category/${encodeURIComponent(cat)}` as any);
+                      }}
+                    >
+                      <Text style={styles.categoryPillText}>{cat}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </Animated.View>
+            )}
           </View>
         </Animated.View>
 
@@ -352,6 +399,38 @@ const styles = StyleSheet.create({
   },
   clearSearchBtn: {
     padding: 4,
+  },
+
+  categorySection: {
+    marginTop: 20,
+  },
+  categoryHeaderTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#4A6038",
+    marginBottom: 10,
+    fontFamily: Platform.OS === "ios" ? "Georgia" : "serif",
+  },
+  categoryScroll: {
+    maxHeight: 44,
+  },
+  categoryScrollContent: {
+    gap: 10,
+    paddingRight: 20, // Add padding at the end for smooth scroll cutoff
+  },
+  categoryPill: {
+    backgroundColor: "#F4F5E6",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#E0E8D8",
+  },
+  categoryPillText: {
+    fontSize: 13,
+    color: "#4A6038",
+    fontWeight: "700",
   },
 
   emptyContainer: { alignItems: "center", justifyContent: "center", paddingVertical: 40 },
