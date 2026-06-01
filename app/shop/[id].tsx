@@ -295,7 +295,7 @@ export default function StoreDetail() {
                 {activeCategory === "All" && (
                   <View style={styles.categoryHeader}>
                     <Text style={styles.categoryTitle}>{cat}</Text>
-                    <TouchableOpacity onPress={() => router.push(`/(shopper)/store-category?storeId=${store?.id}&category=${encodeURIComponent(cat)}` as any)}>
+                    <TouchableOpacity onPress={() => router.push(`/shop/store-category?storeId=${store?.id}&category=${encodeURIComponent(cat)}` as any)}>
                       <Text style={styles.seeAllText}>See all <Ionicons name="chevron-forward" size={12} /></Text>
                     </TouchableOpacity>
                   </View>
