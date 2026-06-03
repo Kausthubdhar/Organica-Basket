@@ -331,8 +331,7 @@ export default function InventoryScreen() {
           <Image
             source={{
               uri:
-                item.image_url ||
-                "https://images.unsplash.com/photo-1542838132-92c53300491e",
+                (item.image_url ? item.image_url.split(',')[0] : "https://images.unsplash.com/photo-1542838132-92c53300491e"),
             }}
             style={styles.imageBase}
             contentFit="cover"

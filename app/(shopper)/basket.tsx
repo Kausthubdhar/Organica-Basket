@@ -217,7 +217,7 @@ export default function BasketScreen() {
         <View style={styles.itemList}>
           {cartItems.map((item, index) => (
             <Animated.View key={item.id} entering={FadeInDown.delay(index * 100)} style={styles.cartItemCard}>
-              <Image source={{ uri: item.image_url }} style={styles.itemImage} contentFit="cover" />
+              <Image source={{ uri: item.image_url ? item.image_url.split(',')[0] : undefined }} style={styles.itemImage} contentFit="cover" />
               <View style={styles.itemDetails}>
                 <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
                 <Text style={styles.itemPrice}>₹{item.price} / {item.unit}</Text>
