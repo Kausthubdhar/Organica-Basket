@@ -47,16 +47,28 @@ const StackedImages = ({
   images, 
   containerStyle, 
   imageStyle, 
+  layout,
   quickAdd,
   onPress
 }: { 
   images: string[]; 
   containerStyle: any; 
   imageStyle: any; 
+  layout: "list" | "grid" | "horizontal";
   quickAdd?: React.ReactNode;
   onPress: () => void;
 }) => {
-  const [containerWidth, setContainerWidth] = useState<number>(0);
+  let defaultWidth = 150;
+  if (layout === "list") {
+    defaultWidth = 110;
+  } else if (layout === "horizontal") {
+    defaultWidth = 164;
+  } else {
+    // Bento grid card or fallback
+    defaultWidth = (width - 40) * 0.47 - 16;
+  }
+
+  const [containerWidth, setContainerWidth] = useState<number>(defaultWidth);
   const [activeIndex, setActiveIndex] = useState<number>(0);
 
   const mainImage = images[0] || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=800";
@@ -80,19 +92,21 @@ const StackedImages = ({
 
   const handleScroll = (event: any) => {
     const contentOffsetX = event.nativeEvent.contentOffset.x;
-    const index = Math.round(contentOffsetX / (containerWidth || 1));
+    const index = Math.round(contentOffsetX / (containerWidth || defaultWidth));
     if (index !== activeIndex && index >= 0 && index < images.length) {
       setActiveIndex(index);
     }
   };
 
+  const activeWidth = containerWidth || defaultWidth;
+
   return (
     <View 
       style={[containerStyle, { overflow: "visible", backgroundColor: "transparent" }]}
       onLayout={(e) => {
-        const { width } = e.nativeEvent.layout;
-        if (width > 0 && width !== containerWidth) {
-          setContainerWidth(width);
+        const { width: measuredWidth } = e.nativeEvent.layout;
+        if (measuredWidth > 0 && measuredWidth !== containerWidth) {
+          setContainerWidth(measuredWidth);
         }
       }}
     >
@@ -161,35 +175,30 @@ const StackedImages = ({
           },
         ]}
       >
-        {containerWidth > 0 ? (
-          <ScrollView
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            onScroll={handleScroll}
-            scrollEventThrottle={16}
-            style={{ width: "100%", height: "100%" }}
-          >
-            {images.map((imgUri, idx) => (
-              <TouchableOpacity
-                key={idx}
-                activeOpacity={0.9}
-                onPress={onPress}
-                style={{ width: containerWidth, height: "100%" }}
-              >
-                <Image 
-                  source={{ uri: imgUri }} 
-                  style={{ width: "100%", height: "100%" }} 
-                  contentFit="cover" 
-                />
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        ) : (
-          <TouchableOpacity activeOpacity={0.9} onPress={onPress} style={{ width: "100%", height: "100%" }}>
-            <Image source={{ uri: mainImage }} style={{ width: "100%", height: "100%" }} contentFit="cover" />
-          </TouchableOpacity>
-        )}
+        <ScrollView
+          horizontal
+          pagingEnabled
+          nestedScrollEnabled={true}
+          showsHorizontalScrollIndicator={false}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          style={{ width: "100%", height: "100%" }}
+        >
+          {images.map((imgUri, idx) => (
+            <TouchableOpacity
+              key={idx}
+              activeOpacity={0.9}
+              onPress={onPress}
+              style={{ width: activeWidth, height: "100%" }}
+            >
+              <Image 
+                source={{ uri: imgUri }} 
+                style={{ width: "100%", height: "100%" }} 
+                contentFit="cover" 
+              />
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
         
         {quickAdd}
 
@@ -365,6 +374,7 @@ export default function StoreDetail() {
               images={images} 
               containerStyle={styles.listImageContainer}
               imageStyle={styles.bentoImg}
+              layout="list"
               quickAdd={<QuickAdd />}
               onPress={() => setSelectedProduct(item)}
             />
@@ -383,6 +393,7 @@ export default function StoreDetail() {
           images={images} 
           containerStyle={styles.bentoImageContainer}
           imageStyle={styles.bentoImg}
+          layout={isHorizontal ? "horizontal" : "grid"}
           quickAdd={<QuickAdd />}
           onPress={() => setSelectedProduct(item)}
         />
