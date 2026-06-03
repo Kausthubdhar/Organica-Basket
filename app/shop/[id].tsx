@@ -30,6 +30,19 @@ import { useCart } from "../../context/CartContext";
 
 const { width } = Dimensions.get("window");
 
+const CUSTOM_CATEGORY_ORDER = [
+  "Fruits",
+  "Veggies",
+  "Sweeteners",
+  "Dairy",
+  "Herbs",
+  "Beverages",
+  "Grain",
+  "Pulses",
+  "Snacks",
+  "Dry Fruits",
+  "Oils",
+];
 const StackedImages = ({ 
   images, 
   containerStyle, 
@@ -205,7 +218,7 @@ const StackedImages = ({
 };
 
 export default function StoreDetail() {
-  const { id } = useLocalSearchParams();
+  const { id, highlightProduct } = useLocalSearchParams();
   const router = useRouter();
   
   const [store, setStore] = useState<any>(null);
@@ -218,7 +231,23 @@ export default function StoreDetail() {
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const searchWidth = useSharedValue(0);
 
-  const categories = ["All", ...new Set(products.map(p => p.category).filter(Boolean))];
+  const uniqueCategories = [...new Set(products.map(p => p.category).filter(Boolean))].sort((a, b) => {
+    const indexA = CUSTOM_CATEGORY_ORDER.indexOf(a);
+    const indexB = CUSTOM_CATEGORY_ORDER.indexOf(b);
+    
+    if (indexA !== -1 && indexB !== -1) {
+      return indexA - indexB;
+    }
+    if (indexA !== -1) {
+      return -1;
+    }
+    if (indexB !== -1) {
+      return 1;
+    }
+    return a.localeCompare(b);
+  });
+
+  const categories = ["All", ...uniqueCategories];
 
   const fetchStoreAndProducts = React.useCallback(async () => {
     try {
@@ -235,7 +264,21 @@ export default function StoreDetail() {
         .from("products")
         .select("*")
         .eq("store_id", id);
-      setProducts(productsData || []);
+        
+      if (productsData) {
+        setProducts(productsData);
+        if (highlightProduct) {
+          const productToHighlight = productsData.find((p: any) => String(p.id) === String(highlightProduct));
+          if (productToHighlight) {
+            setSelectedProduct(productToHighlight);
+            if (productToHighlight.category) {
+              setActiveCategory(productToHighlight.category);
+            }
+          }
+        }
+      } else {
+        setProducts([]);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -462,7 +505,7 @@ export default function StoreDetail() {
                 {activeCategory === "All" && (
                   <View style={styles.categoryHeader}>
                     <Text style={styles.categoryTitle}>{cat}</Text>
-                    <TouchableOpacity>
+                    <TouchableOpacity onPress={() => router.push(`/shop/store-category?storeId=${store?.id}&category=${encodeURIComponent(cat)}` as any)}>
                       <Text style={styles.seeAllText}>See all <Ionicons name="chevron-forward" size={12} /></Text>
                     </TouchableOpacity>
                   </View>

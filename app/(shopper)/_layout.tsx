@@ -61,8 +61,8 @@ export default function TabLayout() {
             {props.state.routes.map((route, index) => {
               const isFocused = props.state.index === index;
               
-              // Skip the hidden 'shop' tab
-              if (route.name === 'shop') return null;
+              // Only show the main tabs in the custom tab bar
+              if (!['index', 'basket', 'profile'].includes(route.name)) return null;
 
               const onPress = () => {
                 const event = props.navigation.emit({
@@ -125,6 +125,8 @@ export default function TabLayout() {
       <Tabs.Screen name="basket" />
       <Tabs.Screen name="profile" />
       <Tabs.Screen name="shop" options={{ href: null }} />
+      <Tabs.Screen name="category/[category]" options={{ href: null }} />
+      <Tabs.Screen name="product/[name]" options={{ href: null }} />
     </Tabs>
   );
 }

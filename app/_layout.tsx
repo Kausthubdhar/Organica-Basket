@@ -168,6 +168,7 @@ export default function RootLayout() {
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding-form" options={{ headerShown: false }} />
         <Stack.Screen name="shop/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="shop/store-category" options={{ headerShown: false }} />
         <Stack.Screen name="order-success" options={{ headerShown: false }} />
 
         {/* Role-Locked Stacks: Only one is visible at a time to prevent leaks */}
