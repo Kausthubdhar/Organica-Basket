@@ -43,6 +43,179 @@ const CUSTOM_CATEGORY_ORDER = [
   "Dry Fruits",
   "Oils",
 ];
+const StackedImages = ({ 
+  images, 
+  containerStyle, 
+  imageStyle, 
+  quickAdd,
+  onPress
+}: { 
+  images: string[]; 
+  containerStyle: any; 
+  imageStyle: any; 
+  quickAdd?: React.ReactNode;
+  onPress: () => void;
+}) => {
+  const [containerWidth, setContainerWidth] = useState<number>(0);
+  const [activeIndex, setActiveIndex] = useState<number>(0);
+
+  const mainImage = images[0] || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=800";
+
+  if (images.length <= 1) {
+    return (
+      <TouchableOpacity 
+        activeOpacity={0.9} 
+        onPress={onPress} 
+        style={[containerStyle, { overflow: "hidden" }]}
+      >
+        <Image source={{ uri: mainImage }} style={imageStyle} contentFit="cover" />
+        {quickAdd}
+      </TouchableOpacity>
+    );
+  }
+
+  // Instagram-style stacked cards visual effect
+  const secondImage = images[1] || mainImage;
+  const thirdImage = images[2] || secondImage;
+
+  const handleScroll = (event: any) => {
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(contentOffsetX / (containerWidth || 1));
+    if (index !== activeIndex && index >= 0 && index < images.length) {
+      setActiveIndex(index);
+    }
+  };
+
+  return (
+    <View 
+      style={[containerStyle, { overflow: "visible", backgroundColor: "transparent" }]}
+      onLayout={(e) => {
+        const { width } = e.nativeEvent.layout;
+        if (width > 0 && width !== containerWidth) {
+          setContainerWidth(width);
+        }
+      }}
+    >
+      {/* Back Layer (Image 3) */}
+      <View
+        style={[
+          imageStyle,
+          {
+            position: "absolute",
+            zIndex: 1,
+            transform: [{ rotate: "-4.5deg" }, { scale: 0.94 }, { translateY: -5 }],
+            borderWidth: 1.5,
+            borderColor: "#fff",
+            borderRadius: 20,
+            overflow: "hidden",
+            shadowColor: "#4A6038",
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.12,
+            shadowRadius: 5,
+            elevation: 2,
+          },
+        ]}
+      >
+        <Image source={{ uri: thirdImage }} style={{ width: "100%", height: "100%" }} contentFit="cover" />
+      </View>
+
+      {/* Middle Layer (Image 2) */}
+      <View
+        style={[
+          imageStyle,
+          {
+            position: "absolute",
+            zIndex: 2,
+            transform: [{ rotate: "4deg" }, { scale: 0.97 }, { translateY: -2.5 }],
+            borderWidth: 1.5,
+            borderColor: "#fff",
+            borderRadius: 20,
+            overflow: "hidden",
+            shadowColor: "#4A6038",
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.16,
+            shadowRadius: 6,
+            elevation: 3,
+          },
+        ]}
+      >
+        <Image source={{ uri: secondImage }} style={{ width: "100%", height: "100%" }} contentFit="cover" />
+      </View>
+
+      {/* Front Layer (Main Swipeable Images) */}
+      <View
+        style={[
+          imageStyle,
+          {
+            zIndex: 3,
+            borderWidth: 1.5,
+            borderColor: "#fff",
+            borderRadius: 20,
+            overflow: "hidden",
+            backgroundColor: "#F4F5E6",
+            shadowColor: "#4A6038",
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.1,
+            shadowRadius: 6,
+            elevation: 4,
+          },
+        ]}
+      >
+        {containerWidth > 0 ? (
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+            style={{ width: "100%", height: "100%" }}
+          >
+            {images.map((imgUri, idx) => (
+              <TouchableOpacity
+                key={idx}
+                activeOpacity={0.9}
+                onPress={onPress}
+                style={{ width: containerWidth, height: "100%" }}
+              >
+                <Image 
+                  source={{ uri: imgUri }} 
+                  style={{ width: "100%", height: "100%" }} 
+                  contentFit="cover" 
+                />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        ) : (
+          <TouchableOpacity activeOpacity={0.9} onPress={onPress} style={{ width: "100%", height: "100%" }}>
+            <Image source={{ uri: mainImage }} style={{ width: "100%", height: "100%" }} contentFit="cover" />
+          </TouchableOpacity>
+        )}
+        
+        {quickAdd}
+
+        {/* Small Elegant Dots Pagination Overlay */}
+        <View style={styles.paginationDotsContainer} pointerEvents="none">
+          {images.map((_, idx) => (
+            <View 
+              key={idx} 
+              style={[
+                styles.paginationDot, 
+                activeIndex === idx && styles.paginationDotActive
+              ]} 
+            />
+          ))}
+        </View>
+
+        {/* Premium multi-image visual indicator - hidden once swiped */}
+        {activeIndex === 0 && (
+          <BlurView intensity={80} tint="light" style={styles.galleryBadge}>
+            <MaterialCommunityIcons name="layers-outline" size={14} color="#1E261E" />
+          </BlurView>
+        )}
+      </View>
+    </View>
+  );
+};
 
 export default function StoreDetail() {
   const { id, highlightProduct } = useLocalSearchParams();
@@ -153,6 +326,7 @@ export default function StoreDetail() {
   const renderProductCard = (item: any, index: number, layout: string) => {
     const isHorizontal = layout === 'horizontal';
     const isList = layout === 'list';
+    const images = item.image_url ? item.image_url.split(',').map((img: string) => img.trim()).filter(Boolean) : [];
     
     const QuickAdd = () => (
       <BlurView intensity={80} style={styles.bentoGlassControl} tint="light">
@@ -177,21 +351,24 @@ export default function StoreDetail() {
     if (isList) {
       return (
         <Animated.View key={item.id} entering={FadeInUp.delay(index * 50)} style={styles.listCard}>
-          <TouchableOpacity 
-            activeOpacity={0.9} 
-            onPress={() => setSelectedProduct(item)}
-            style={{ flex: 1, flexDirection: "row", alignItems: "center" }}
-          >
-            <View style={styles.listInfo}>
+          <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
+            <TouchableOpacity 
+              activeOpacity={0.9} 
+              onPress={() => setSelectedProduct(item)}
+              style={styles.listInfo}
+            >
               <Text style={styles.bentoName} numberOfLines={1}>{item.name}</Text>
               {item.description && <Text style={styles.listDesc} numberOfLines={2}>{item.description}</Text>}
               <Text style={styles.bentoPrice}>₹{item.price} / {item.unit}</Text>
-            </View>
-            <View style={styles.listImageContainer}>
-              <Image source={{ uri: item.image_url || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=800" }} style={styles.bentoImg} contentFit="cover" />
-              <QuickAdd />
-            </View>
-          </TouchableOpacity>
+            </TouchableOpacity>
+            <StackedImages 
+              images={images} 
+              containerStyle={styles.listImageContainer}
+              imageStyle={styles.bentoImg}
+              quickAdd={<QuickAdd />}
+              onPress={() => setSelectedProduct(item)}
+            />
+          </View>
         </Animated.View>
       );
     }
@@ -202,15 +379,18 @@ export default function StoreDetail() {
         entering={FadeInUp.delay(index * 50)}
         style={isHorizontal ? styles.horizontalCard : styles.bentoCard}
       >
+        <StackedImages 
+          images={images} 
+          containerStyle={styles.bentoImageContainer}
+          imageStyle={styles.bentoImg}
+          quickAdd={<QuickAdd />}
+          onPress={() => setSelectedProduct(item)}
+        />
         <TouchableOpacity 
           activeOpacity={0.9} 
           onPress={() => setSelectedProduct(item)}
           style={{ flex: 1 }}
         >
-          <View style={styles.bentoImageContainer}>
-            <Image source={{ uri: item.image_url || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=800" }} style={styles.bentoImg} contentFit="cover" />
-            <QuickAdd />
-          </View>
           <View style={styles.bentoInfo}>
             <Text style={styles.bentoName} numberOfLines={1}>{item.name}</Text>
             <Text style={styles.bentoPrice}>₹{item.price} / {item.unit}</Text>
@@ -365,10 +545,24 @@ export default function StoreDetail() {
         <View style={styles.modalContainer}>
           <ScrollView showsVerticalScrollIndicator={false}>
             <View style={styles.modalHeader}>
-              <Image 
-                source={{ uri: selectedProduct?.image_url || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=800" }} 
-                style={styles.modalHeroImage} 
-              />
+              {selectedProduct?.image_url && selectedProduct.image_url.includes(',') ? (
+                <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
+                  {selectedProduct.image_url.split(',').map((imgUri: string, idx: number) => (
+                    <Image 
+                      key={idx} 
+                      source={{ uri: imgUri }} 
+                      style={[styles.modalHeroImage, { width }]} 
+                      contentFit="cover" 
+                    />
+                  ))}
+                </ScrollView>
+              ) : (
+                <Image 
+                  source={{ uri: selectedProduct?.image_url ? selectedProduct.image_url.split(',')[0] : "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=800" }} 
+                  style={[styles.modalHeroImage, { width }]} 
+                  contentFit="cover"
+                />
+              )}
               <TouchableOpacity 
                 style={styles.modalCloseBtn} 
                 onPress={() => setSelectedProduct(null)}
@@ -506,6 +700,39 @@ const styles = StyleSheet.create({
   bentoImageContainer: { width: "100%", height: 160, borderRadius: 20, overflow: "hidden", backgroundColor: "#F4F5E6", marginBottom: 12 },
   bentoImg: { width: "100%", height: "100%" },
   bentoGlassControl: { position: "absolute", bottom: 8, right: 8, borderRadius: 16, overflow: "hidden", backgroundColor: "rgba(255,255,255,0.7)" },
+  galleryBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    borderRadius: 8,
+    overflow: "hidden",
+    padding: 6,
+    backgroundColor: "rgba(255, 255, 255, 0.75)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.4)",
+  },
+  paginationDotsContainer: {
+    position: "absolute",
+    bottom: 8,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 4,
+  },
+  paginationDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255, 255, 255, 0.4)",
+  },
+  paginationDotActive: {
+    backgroundColor: "#fff",
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
   bentoQtyControl: { flexDirection: "row", alignItems: "center", padding: 4 },
   bentoQtyBtn: { width: 32, height: 32, justifyContent: "center", alignItems: "center", backgroundColor: "#fff", borderRadius: 12, shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 5 },
   bentoQtyVal: { paddingHorizontal: 12, fontSize: 14, fontWeight: "800", color: "#1E261E" },

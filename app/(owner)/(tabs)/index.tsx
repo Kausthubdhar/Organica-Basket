@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform, Modal, Linking, Pressable } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform, Modal, Linking, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import Animated, { FadeInDown, FadeInUp, useSharedValue, useAnimatedStyle, withTiming, Easing } from "react-native-reanimated";
 import { supabase } from "../../../lib/supabase";
 import * as Haptics from "expo-haptics";
 import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect } from "expo-router";
+import { showModernAlert } from "../../../components/ModernAlert";
 
 export default function OwnerDashboard() {
   const [store, setStore] = useState<any>(null);
@@ -66,9 +69,47 @@ export default function OwnerDashboard() {
       console.error("Update error:", error);
       alert("Error updating order: " + error.message);
     } else {
-      setPendingOrders(prev => prev.filter(o => o.id !== orderId));
-      setStats(prev => ({ ...prev, orders: prev.orders - 1 }));
+      // If updating to delivered, remove from this screen's list entirely
+      if (newStatus === "delivered") {
+        setPendingOrders(prev => prev.filter(o => o.id !== orderId));
+        setStats(prev => ({ ...prev, orders: prev.orders - 1 }));
+      }
     }
+  };
+
+  const isOrderPacked = (order: any) => {
+    return order?.items && Array.isArray(order.items) && order.items.length > 0 && order.items.every((i: any) => i.is_packed);
+  };
+
+  const toggleItemPacked = async (itemIndex: number) => {
+    if (!selectedOrder) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    const newItems = [...selectedOrder.items];
+    newItems[itemIndex] = { ...newItems[itemIndex], is_packed: !newItems[itemIndex].is_packed };
+    
+    const updatedOrder = { ...selectedOrder, items: newItems };
+    setSelectedOrder(updatedOrder);
+    setPendingOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
+
+    const { error } = await supabase.from("orders").update({ items: newItems }).eq("id", updatedOrder.id);
+    if (error) {
+       console.error(error);
+       alert("Error syncing checklist to database");
+    }
+  };
+
+  const confirmDelivery = (orderId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    showModernAlert({
+      title: "Confirm Delivery",
+      message: "Are you sure you want to mark this order as delivered?",
+      type: "confirm",
+      onConfirm: () => {
+        updateOrderStatus(orderId, "delivered");
+        if (showOrderModal) setShowOrderModal(false);
+      }
+    });
   };
 
   const toggleOrdering = async () => {
@@ -206,7 +247,14 @@ export default function OwnerDashboard() {
                     <Text style={styles.avatarInitial}>{getCustomerProfile(order)?.full_name?.charAt(0) || "C"}</Text>
                   </View>
                   <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={styles.customerName}>{getCustomerProfile(order)?.full_name || "Customer"}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={styles.customerName}>{getCustomerProfile(order)?.full_name || "Customer"}</Text>
+                      {isOrderPacked(order) && (
+                        <View style={styles.packedBadgeSmall}>
+                          <Text style={styles.packedBadgeText}>Packed</Text>
+                        </View>
+                      )}
+                    </View>
                     <View style={styles.timeRow}>
                       <Ionicons name="time-outline" size={12} color="#8A998A" />
                       <Text style={styles.orderTime}>
@@ -242,10 +290,18 @@ export default function OwnerDashboard() {
                   </TouchableOpacity>
                   
                   <TouchableOpacity 
-                    onPress={() => updateOrderStatus(order.id, "delivered")}
-                    style={styles.packBtn}
+                    onPress={() => {
+                      if (isOrderPacked(order)) {
+                        confirmDelivery(order.id);
+                      } else {
+                        setSelectedOrder(order);
+                        setShowOrderModal(true);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }
+                    }}
+                    style={[styles.packBtn, isOrderPacked(order) && { backgroundColor: '#1565C0' }]}
                   >
-                    <Text style={styles.packBtnText}>Mark Delivered</Text>
+                    <Text style={styles.packBtnText}>{isOrderPacked(order) ? "Mark Delivered" : "Pack Items"}</Text>
                   </TouchableOpacity>
                 </View>
               </Animated.View>
@@ -253,14 +309,7 @@ export default function OwnerDashboard() {
           )}
         </View>
 
-        {/* Recent Tips */}
-        <View style={styles.tipCard}>
-          <MaterialCommunityIcons name="lightbulb-on-outline" size={30} color="#F1C40F" />
-          <View style={{ flex: 1, marginLeft: 16 }}>
-            <Text style={styles.tipTitle}>Boost Your Sales</Text>
-            <Text style={styles.tipDesc}>Stores with high-quality photos get 3x more orders. Update your inventory today!</Text>
-          </View>
-        </View>
+
 
       </ScrollView>
 
@@ -325,11 +374,24 @@ export default function OwnerDashboard() {
                 </View>
                 <View style={styles.itemsList}>
                   {selectedOrder.items && Array.isArray(selectedOrder.items) && selectedOrder.items.map((item: any, idx: number) => (
-                    <View key={idx} style={styles.itemRow}>
-                      <Text style={styles.itemQty}>{item.quantity}x</Text>
-                      <Text style={styles.itemName}>{item.name}</Text>
-                      <Text style={styles.itemPrice}>₹{item.price * item.quantity}</Text>
-                    </View>
+                    <TouchableOpacity 
+                      key={idx} 
+                      style={[styles.itemRow, item.is_packed && { opacity: 0.6 }]}
+                      onPress={() => {
+                        toggleItemPacked(idx);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons 
+                        name={item.is_packed ? "checkmark-circle" : "ellipse-outline"} 
+                        size={24} 
+                        color={item.is_packed ? "#4A6038" : "#C0CDB8"} 
+                        style={{ marginRight: 12 }} 
+                      />
+                      <Text style={[styles.itemQty, item.is_packed && { textDecorationLine: 'line-through' }]}>{item.quantity}x</Text>
+                      <Text style={[styles.itemName, item.is_packed && { textDecorationLine: 'line-through' }]}>{item.name}</Text>
+                      <Text style={[styles.itemPrice, item.is_packed && { textDecorationLine: 'line-through' }]}>₹{item.price * item.quantity}</Text>
+                    </TouchableOpacity>
                   ))}
                   <View style={styles.totalRow}>
                     <Text style={styles.totalLabel}>Total Revenue</Text>
@@ -341,13 +403,19 @@ export default function OwnerDashboard() {
               <View style={{ height: 20 }} />
 
               <TouchableOpacity 
-                style={styles.completeOrderBtn}
+                style={[
+                  styles.completeOrderBtn, 
+                  !isOrderPacked(selectedOrder) && { backgroundColor: '#C0CDB8' }
+                ]}
+                disabled={!isOrderPacked(selectedOrder)}
                 onPress={() => {
-                  updateOrderStatus(selectedOrder.id, "delivered");
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                   setShowOrderModal(false);
                 }}
               >
-                <Text style={styles.completeOrderBtnText}>Mark as Delivered</Text>
+                <Text style={styles.completeOrderBtnText}>
+                  {isOrderPacked(selectedOrder) ? "Done Packing" : "Check off all items to pack"}
+                </Text>
               </TouchableOpacity>
             </ScrollView>
           )}
@@ -407,6 +475,8 @@ const styles = StyleSheet.create({
   customerAvatarBox: { width: 44, height: 44, borderRadius: 14, backgroundColor: "#F4F5E6", justifyContent: "center", alignItems: "center" },
   avatarInitial: { fontSize: 18, fontWeight: "900", color: "#4A6038" },
   customerName: { fontSize: 16, fontWeight: "800", color: "#1E261E" },
+  packedBadgeSmall: { backgroundColor: "#E3F2FD", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  packedBadgeText: { fontSize: 10, fontWeight: "800", color: "#1565C0", textTransform: "uppercase" },
   timeRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
   orderTime: { fontSize: 12, color: "#8A998A", fontWeight: "600" },
   amountBadge: { backgroundColor: "#F4F5E6", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
@@ -419,9 +489,7 @@ const styles = StyleSheet.create({
   detailsBtnText: { color: "#4A6038", fontSize: 13, fontWeight: "800" },
   packBtn: { flex: 1.5, backgroundColor: "#4A6038", paddingVertical: 12, borderRadius: 14, alignItems: "center", justifyContent: "center" },
   packBtnText: { color: "#fff", fontSize: 13, fontWeight: "800" },
-  tipCard: { flexDirection: "row", backgroundColor: "#2D382D", padding: 20, borderRadius: 24, alignItems: "center" },
-  tipTitle: { color: "#fff", fontSize: 16, fontWeight: "700", marginBottom: 4 },
-  tipDesc: { color: "rgba(255,255,255,0.6)", fontSize: 13, lineHeight: 18 },
+
 
   // Modal Styles
   modalContainer: { flex: 1, backgroundColor: "#F5F6E9", padding: 24, paddingTop: Platform.OS === 'ios' ? 40 : 24 },
