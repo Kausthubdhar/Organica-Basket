@@ -44,8 +44,8 @@ export default function AddProductScreen() {
   const [price, setPrice] = useState("");
   const [unit, setUnit] = useState("kg");
   const [category, setCategory] = useState("Veggies");
-  const [imageUri, setImageUri] = useState<string | null>(null);
-  const [imageChanged, setImageChanged] = useState(false);
+  const [images, setImages] = useState<string[]>([]);
+  const [imagesChanged, setImagesChanged] = useState(false);
   const [isAvailable, setIsAvailable] = useState(true);
   
   // Status Modal State
@@ -67,7 +67,9 @@ export default function AddProductScreen() {
       setUnit(data.unit);
       setCategory(data.category);
       setIsAvailable(data.is_available);
-      setImageUri(data.image_url);
+      if (data.image_url) {
+        setImages(data.image_url.split(','));
+      }
     }
     setLoading(false);
   }, [id]);
@@ -88,13 +90,13 @@ export default function AddProductScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [1, 1],
+      allowsMultipleSelection: true,
       quality: 0.85,
     });
     if (!result.canceled) {
-      setImageUri(result.assets[0].uri);
-      setImageChanged(true);
+      const newImages = result.assets.map(asset => asset.uri);
+      setImages(prev => [...prev, ...newImages]);
+      setImagesChanged(true);
     }
   };
 
@@ -117,9 +119,15 @@ export default function AddProductScreen() {
       quality: 0.85,
     });
     if (!result.canceled) {
-      setImageUri(result.assets[0].uri);
-      setImageChanged(true);
+      setImages(prev => [...prev, result.assets[0].uri]);
+      setImagesChanged(true);
     }
+  };
+
+  const removeImage = (indexToRemove: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setImages(prev => prev.filter((_, idx) => idx !== indexToRemove));
+    setImagesChanged(true);
   };
 
   const uploadProductImage = async (uri: string): Promise<string | null> => {
@@ -167,39 +175,38 @@ export default function AddProductScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
-      let finalImageUrl = imageUri;
+      let finalImages = [...images];
       
       // Only upload if it's a new local image (not a web URL)
-      if (imageChanged && imageUri && !imageUri.startsWith('http')) {
-        const uploadedUrl = await uploadProductImage(imageUri);
-        if (uploadedUrl) {
-          finalImageUrl = uploadedUrl;
-        } else {
-          throw new Error("Failed to upload image. Please try again.");
-        }
+      if (imagesChanged) {
+        const uploadPromises = finalImages.map(async (uri) => {
+          if (!uri.startsWith('http')) {
+            const uploadedUrl = await uploadProductImage(uri);
+            if (!uploadedUrl) throw new Error("Failed to upload an image.");
+            return uploadedUrl;
+          }
+          return uri;
+        });
+        finalImages = await Promise.all(uploadPromises);
       }
 
+      const productPayload = {
+        name: name.trim(),
+        description: description.trim(),
+        price: parseFloat(price),
+        unit,
+        category,
+        image_url: finalImages.length > 0 ? finalImages.join(',') : null,
+        is_available: isAvailable,
+      };
+
       if (isEditMode) {
-        const { error } = await supabase.from("products").update({
-          name: name.trim(),
-          description: description.trim(),
-          price: parseFloat(price),
-          unit,
-          category,
-          image_url: finalImageUrl,
-          is_available: isAvailable,
-        }).eq("id", id);
+        const { error } = await supabase.from("products").update(productPayload).eq("id", id);
         if (error) throw error;
       } else {
         const { error } = await supabase.from("products").insert({
           store_id: store.id,
-          name: name.trim(),
-          description: description.trim(),
-          price: parseFloat(price),
-          unit,
-          category,
-          image_url: finalImageUrl,
-          is_available: isAvailable,
+          ...productPayload
         });
         if (error) throw error;
       }
@@ -270,32 +277,29 @@ export default function AddProductScreen() {
 
           {/* Image Picker */}
           <Animated.View entering={FadeInUp.delay(100)} style={styles.card}>
-            <Text style={styles.sectionLabel}>Product Photo</Text>
-            <View style={styles.imageRow}>
-              {imageUri ? (
-                <TouchableOpacity onPress={pickImage} style={styles.imagePreviewBox}>
-                  <Image source={{ uri: imageUri }} style={styles.imagePreview} contentFit="cover" />
-                  <View style={styles.imageEditBadge}>
-                    <Ionicons name="camera" size={16} color="#fff" />
-                  </View>
-                </TouchableOpacity>
-              ) : (
-                <View style={styles.noImageBox}>
-                  <Ionicons name="image-outline" size={40} color="#C0CDB8" />
-                  <Text style={styles.noImageText}>No photo yet</Text>
+            <Text style={styles.sectionLabel}>Product Photos</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.imageScrollRow}>
+              {images.map((uri, idx) => (
+                <View key={idx} style={styles.imagePreviewWrapper}>
+                  <Image source={{ uri }} style={styles.imagePreview} contentFit="cover" />
+                  <TouchableOpacity onPress={() => removeImage(idx)} style={styles.removeImageBadge}>
+                    <Ionicons name="close" size={14} color="#fff" />
+                  </TouchableOpacity>
                 </View>
-              )}
-              <View style={styles.imageActions}>
-                <TouchableOpacity onPress={takePhoto} style={styles.imagePill}>
-                  <Ionicons name="camera-outline" size={18} color={SOFT_GREEN} />
-                  <Text style={styles.imagePillText}>Camera</Text>
+              ))}
+              
+              <View style={styles.imageActionsVertical}>
+                <TouchableOpacity onPress={takePhoto} style={styles.imagePillVertical}>
+                  <Ionicons name="camera-outline" size={24} color={SOFT_GREEN} />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={pickImage} style={styles.imagePill}>
-                  <Ionicons name="images-outline" size={18} color={SOFT_GREEN} />
-                  <Text style={styles.imagePillText}>Gallery</Text>
+                <TouchableOpacity onPress={pickImage} style={styles.imagePillVertical}>
+                  <Ionicons name="images-outline" size={24} color={SOFT_GREEN} />
                 </TouchableOpacity>
               </View>
-            </View>
+            </ScrollView>
+            {images.length === 0 && (
+              <Text style={styles.noImageText}>No photos selected yet.</Text>
+            )}
           </Animated.View>
 
           {/* Core Details */}
@@ -410,15 +414,13 @@ const styles = StyleSheet.create({
   unitScroll: { gap: 8, paddingRight: 8 },
   unitPill: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: "#F4F5E6" },
   unitText: { fontSize: 13, fontWeight: "700", color: "#6B7A6B" },
-  imageRow: { flexDirection: "row", alignItems: "center", gap: 16 },
-  imagePreviewBox: { width: 100, height: 100, borderRadius: 20, overflow: "hidden" },
+  imageScrollRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  imagePreviewWrapper: { width: 100, height: 100, borderRadius: 20, overflow: "hidden" },
   imagePreview: { width: "100%", height: "100%", borderRadius: 20 },
-  imageEditBadge: { position: "absolute", bottom: 6, right: 6, backgroundColor: "rgba(0,0,0,0.5)", width: 28, height: 28, borderRadius: 14, justifyContent: "center", alignItems: "center" },
-  noImageBox: { width: 100, height: 100, borderRadius: 20, backgroundColor: "#F4F5E6", justifyContent: "center", alignItems: "center", borderWidth: 2, borderStyle: "dashed", borderColor: "#C0CDB8" },
-  noImageText: { fontSize: 10, color: "#C0CDB8", marginTop: 4, fontWeight: "600" },
-  imageActions: { flex: 1, gap: 10 },
-  imagePill: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#F4F5E6", paddingVertical: 12, paddingHorizontal: 16, borderRadius: 14 },
-  imagePillText: { fontSize: 14, fontWeight: "700", color: SOFT_GREEN },
+  removeImageBadge: { position: "absolute", top: 6, right: 6, backgroundColor: "rgba(0,0,0,0.6)", width: 24, height: 24, borderRadius: 12, justifyContent: "center", alignItems: "center" },
+  noImageText: { fontSize: 13, color: "#8A998A", marginTop: 8, fontStyle: "italic" },
+  imageActionsVertical: { flexDirection: "row", gap: 10, alignItems: "center" },
+  imagePillVertical: { width: 60, height: 60, backgroundColor: "#F4F5E6", justifyContent: "center", alignItems: "center", borderRadius: 14, borderWidth: 1, borderColor: "#E0E8D8" },
   categoryGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   categoryBtn: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14, borderWidth: 1.5, borderColor: "#E0E8D8", backgroundColor: "#F4F5E6" },
   categoryText: { fontSize: 13, fontWeight: "700", color: "#6B7A6B" },
