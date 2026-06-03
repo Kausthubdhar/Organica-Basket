@@ -30,6 +30,20 @@ import { useCart } from "../../context/CartContext";
 
 const { width } = Dimensions.get("window");
 
+const CUSTOM_CATEGORY_ORDER = [
+  "Fruits",
+  "Veggies",
+  "Sweeteners",
+  "Dairy",
+  "Herbs",
+  "Beverages",
+  "Grain",
+  "Pulses",
+  "Snacks",
+  "Dry Fruits",
+  "Oils",
+];
+
 export default function StoreDetail() {
   const { id, highlightProduct } = useLocalSearchParams();
   const router = useRouter();
@@ -44,7 +58,23 @@ export default function StoreDetail() {
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const searchWidth = useSharedValue(0);
 
-  const categories = ["All", ...new Set(products.map(p => p.category).filter(Boolean))].sort();
+  const uniqueCategories = [...new Set(products.map(p => p.category).filter(Boolean))].sort((a, b) => {
+    const indexA = CUSTOM_CATEGORY_ORDER.indexOf(a);
+    const indexB = CUSTOM_CATEGORY_ORDER.indexOf(b);
+    
+    if (indexA !== -1 && indexB !== -1) {
+      return indexA - indexB;
+    }
+    if (indexA !== -1) {
+      return -1;
+    }
+    if (indexB !== -1) {
+      return 1;
+    }
+    return a.localeCompare(b);
+  });
+
+  const categories = ["All", ...uniqueCategories];
 
   const fetchStoreAndProducts = React.useCallback(async () => {
     try {
