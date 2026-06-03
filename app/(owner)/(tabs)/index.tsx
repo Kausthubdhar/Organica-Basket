@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform, Modal, Linking, Pressable } from "react-native";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform, Modal, Linking, Alert } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform, Modal, Linking, Pressable, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import Animated, { FadeInDown, FadeInUp, useSharedValue, useAnimatedStyle, withTiming, Easing } from "react-native-reanimated";
 import { supabase } from "../../../lib/supabase";
 import * as Haptics from "expo-haptics";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useFocusEffect } from "expo-router";
 import { showModernAlert } from "../../../components/ModernAlert";
 
 export default function OwnerDashboard() {
